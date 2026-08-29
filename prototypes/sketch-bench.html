@@ -197,13 +197,13 @@
             <input type="range" id="budget" min="0" max="3000" value="1100" step="100">
           </div>
           <div class="field">
-            <label>Campo</label>
+            <label>Punto di vista</label>
             <div class="row">
-              <button class="act" id="field-inf" aria-pressed="true" style="flex:1">Infinito</button>
-              <button class="act" id="field-fin" aria-pressed="false" style="flex:1">Finito</button>
+              <button class="act" id="view-in" aria-pressed="true" style="flex:1">Dentro</button>
+              <button class="act" id="view-out" aria-pressed="false" style="flex:1">Fuori</button>
             </div>
           </div>
-          <p class="hint">Archi e triangoli non vengono creati: sono ricalcolati ogni frame dalla distanza fra i nodi. Il ritmo con cui nascono e si spengono si legge sotto il canvas, e si regola con <b>deriva</b> e <b>soglia</b>. Con il campo <b>finito</b> puoi allontanarti e guardare la nuvola da fuori.</p>
+          <p class="hint" id="view-hint">Sei <b>dentro</b>: il campo si avvolge attorno alla camera e non ne esci mai. Premi <b>Fuori</b> e la camera si allontana da sola fino a inquadrare la nuvola intera, poi le orbita attorno.</p>
         </div>
       </div>
 
@@ -215,7 +215,7 @@
             <input type="text" id="cam" spellcheck="false" value="0, 0, 0, 0, 0">
           </div>
           <button class="act" id="cam-reset">Riporta all'origine</button>
-          <p class="hint">Trascina sul canvas per guardarti intorno. <b>W/S</b> o <b>↑/↓</b> per avanzare, <b>A/D</b> per traslare, <b>R/F</b> per salire e scendere, <b>Shift</b> per andare cinque volte più veloce.</p>
+          <p class="hint" id="cam-hint">Trascina sul canvas per guardarti intorno. <b>W/S</b> o <b>↑/↓</b> per avanzare, <b>A/D</b> per traslare, <b>R/F</b> per salire e scendere, <b>Shift</b> per andare cinque volte più veloce.</p>
         </div>
       </div>
 
@@ -496,7 +496,7 @@ SKETCHES.inside = {
   clear: "full",
   hasCam: true,
   title: "Immersione — la camera è dentro la nuvola",
-  body: "Tre differenze rispetto a «Plexus», e sono tutte sulla posizione di chi guarda. Primo: il campo è infinito — i nodi si avvolgono attorno alla camera, così non ne esci mai. Secondo: c'è una camera vera, con posizione e direzione di sguardo, che puoi muovere. Terzo: il disegnato viene diviso in tre strati per distanza e lo strato vicino viene sfocato — è la profondità di campo, ed è l'unico punto in cui i piani sovrapposti servono davvero.",
+  body: "Tutto qui riguarda la posizione di chi guarda. Da dentro, il campo si avvolge attorno alla camera: non ne esci mai, e i nodi ti vengono incontro. Da fuori, la nuvola torna a essere un oggetto finito e la camera le orbita attorno. In entrambi i casi il disegnato viene diviso in tre strati per distanza e lo strato vicino viene sfocato: è la profondità di campo, ed è l'unico punto in cui i piani sovrapposti servono davvero.",
   code: "<span class='c'>// mondo -&gt; vista: sposta secondo la camera, poi ruota</span>\nvar dx = wrap(p.x - cam.x), dy = wrap(p.y - cam.y), dz = wrap(p.z - cam.z);\nvar x1 = dx * cy - dz * sy,  z1 = dx * sy + dz * cy;   <span class='c'>// imbardata</span>\nvar y2 = dy * cp - z1 * sp,  z2 = dy * sp + z1 * cp;   <span class='c'>// beccheggio</span>\n\n<span class='c'>// wrap(): il campo si ripete, la camera non ne esce mai</span>\nfunction wrap(v) { return v - B * Math.round(v / B); }\n\n<span class='c'>// profondità di campo: tre strati, solo il vicino sfocato</span>\nctx.filter = 'blur(7px)';   ctx.drawImage(vicino, 0, 0, w, h);",
   create: function (rnd, w, h, density, P) {
     var B = 2.6;                                   // lato della cella che si ripete
@@ -510,6 +510,11 @@ SKETCHES.inside = {
 
     var cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
     var focal = 1.0, autoDrift = 0.30;
+    /* Due modi di guardare. DENTRO: campo infinito che si avvolge attorno alla
+       camera, deriva lenta in avanti. FUORI: campo finito, la camera si porta a
+       distanza da sola e orbita attorno alla nuvola. */
+    var mode = "inside";
+    var orbA = 0, orbR = 5.5, orbRT = 5.5, orbH = 0.6, yawOff = 0, pitchOff = 0;
     var rel = new Float32Array(N * 3);             // posizioni relative alla camera
     var edges = 0, tris = 0, infinite = true;
 
@@ -569,31 +574,70 @@ SKETCHES.inside = {
       count: N,
       getCam: function () { return cam; },
       setCam: function (c) {
+        if (mode === "outside") {
+          var d = Math.sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
+          orbR = orbRT = d < 1.6 ? 5.5 : Math.min(40, d);
+          orbA = (c.x === 0 && c.z === 0) ? orbA : Math.atan2(c.x, c.z);
+          orbH = c.y; yawOff = 0; pitchOff = 0;
+          return;
+        }
         cam.x = c.x; cam.y = c.y; cam.z = c.z; cam.yaw = c.yaw; cam.pitch = c.pitch;
       },
       step: function (dt, w, h, input) {
-        infinite = P ? P.infinite : true;
-        if (input) {
-          cam.yaw += input.lookX * 0.0040;
-          cam.pitch += input.lookY * 0.0040;
-          cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch));
-          if (input.fov) focal = input.fov;
+        var want = (P && P.mode) ? P.mode : "inside";
+        if (want !== mode) {
+          mode = want;
+          if (mode === "outside") {
+            /* si parte da dove sei e ci si allontana fino a inquadrare la nuvola */
+            var d0 = Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z);
+            orbA = (cam.x === 0 && cam.z === 0) ? 0 : Math.atan2(cam.x, cam.z);
+            orbR = Math.max(0.6, d0); orbRT = 5.5; orbH = 0.6;
+            yawOff = 0; pitchOff = 0;
+          } else {
+            cam.x = 0; cam.y = 0; cam.z = 0; cam.yaw = 0; cam.pitch = 0;
+          }
         }
-        var cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
-        var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
-        /* assi della camera nel mondo, ricavati invertendo la rotazione di vista */
-        var fwd = [sy * cp, sp, cy * cp];
-        var rgt = [cy, 0, -sy];
-        var up = [-sp * sy, cp, -sp * cy];
-
+        infinite = (mode === "inside");
         var mf = input ? input.moveF : 0, mr = input ? input.moveR : 0, mu = input ? input.moveU : 0;
-        /* Deriva automatica solo nel campo infinito: in quello finito la camera
-           resta dove la metti, altrimenti verrebbe risucchiata dentro la nuvola. */
-        if (mf === 0 && mr === 0 && mu === 0 && infinite) mf = autoDrift;
-        var sc = 0.011 * dt * (input && input.boost ? 5 : 1);
-        cam.x += (fwd[0] * mf + rgt[0] * mr + up[0] * mu) * sc;
-        cam.y += (fwd[1] * mf + rgt[1] * mr + up[1] * mu) * sc;
-        cam.z += (fwd[2] * mf + rgt[2] * mr + up[2] * mu) * sc;
+        var fast = input && input.boost ? 5 : 1;
+
+        if (mode === "outside") {
+          /* La camera sta su un'orbita attorno all'origine e guarda la nuvola.
+             W/S avvicinano e allontanano, R/F alzano e abbassano, A/D ruotano.
+             L'orbita avanza comunque da sola, così la scena non è mai ferma. */
+          if (input) {
+            yawOff += input.lookX * 0.0040;
+            pitchOff = Math.max(-1.0, Math.min(1.0, pitchOff + input.lookY * 0.0040));
+            if (input.fov) focal = input.fov;
+          }
+          var st = 0.055 * dt * fast;
+          orbRT = Math.max(1.8, Math.min(40, orbRT - mf * st));
+          orbH += mu * st * 0.5;
+          orbA += mr * st * 0.10 + dt * 0.0016;
+          orbR += (orbRT - orbR) * 0.045 * dt;      /* avvicinamento morbido */
+          cam.x = Math.sin(orbA) * orbR; cam.y = orbH; cam.z = Math.cos(orbA) * orbR;
+          var L = Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z) || 1;
+          cam.yaw = Math.atan2(-cam.x / L, -cam.z / L) + yawOff;
+          cam.pitch = Math.asin(Math.max(-1, Math.min(1, -cam.y / L))) + pitchOff;
+        } else {
+          if (input) {
+            cam.yaw += input.lookX * 0.0040;
+            cam.pitch += input.lookY * 0.0040;
+            cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch));
+            if (input.fov) focal = input.fov;
+          }
+          var cy0 = Math.cos(cam.yaw), sy0 = Math.sin(cam.yaw);
+          var cp0 = Math.cos(cam.pitch), sp0 = Math.sin(cam.pitch);
+          /* assi della camera nel mondo, ricavati invertendo la rotazione di vista */
+          var fwd = [sy0 * cp0, sp0, cy0 * cp0];
+          var rgt = [cy0, 0, -sy0];
+          var up = [-sp0 * sy0, cp0, -sp0 * cy0];
+          if (mf === 0 && mr === 0 && mu === 0) mf = autoDrift;
+          var sc = 0.011 * dt * fast;
+          cam.x += (fwd[0] * mf + rgt[0] * mr + up[0] * mu) * sc;
+          cam.y += (fwd[1] * mf + rgt[1] * mr + up[1] * mu) * sc;
+          cam.z += (fwd[2] * mf + rgt[2] * mr + up[2] * mu) * sc;
+        }
 
         /* La deriva dei nodi è ciò che governa il ritmo: più i nodi si muovono,
            più spesso attraversano la soglia, più archi nascono e si spengono. */
@@ -872,7 +916,7 @@ SKETCHES.lattice = {
   /* stato degli input della camera, consumato da step() */
   var input = { lookX: 0, lookY: 0, moveF: 0, moveR: 0, moveU: 0, fov: 1, boost: false };
   /* parametri di generazione, letti dallo sketch a ogni frame senza ricostruirlo */
-  var params = { link: 0.57, drift: 1, maxTri: 1100, infinite: true };
+  var params = { link: 0.57, drift: 1, maxTri: 1100, mode: "inside" };
   var genPanel = document.getElementById("gen-panel");
   var keys = Object.create(null);
   var camPanel = document.getElementById("cam-panel");
@@ -943,14 +987,20 @@ SKETCHES.lattice = {
   budEl.addEventListener("input", function () {
     params.maxTri = parseInt(budEl.value, 10); budVal.textContent = budEl.value;
   });
-  var fInf = document.getElementById("field-inf"), fFin = document.getElementById("field-fin");
-  function setField(on) {
-    params.infinite = on;
-    fInf.setAttribute("aria-pressed", String(on));
-    fFin.setAttribute("aria-pressed", String(!on));
+  var vIn = document.getElementById("view-in"), vOut = document.getElementById("view-out");
+  var vHint = document.getElementById("view-hint");
+  var camHint = document.getElementById("cam-hint");
+  var HINT_IN = "Sei <b>dentro</b>: il campo si avvolge attorno alla camera e non ne esci mai. Premi <b>Fuori</b> e la camera si allontana da sola fino a inquadrare la nuvola intera, poi le orbita attorno.";
+  var HINT_OUT = "Sei <b>fuori</b>: la nuvola è un oggetto finito e la camera le orbita attorno da sola. <b>W/S</b> avvicinano e allontanano, <b>R/F</b> alzano e abbassano, <b>A/D</b> ruotano più in fretta.";
+  function setView(inside) {
+    params.mode = inside ? "inside" : "outside";
+    vIn.setAttribute("aria-pressed", String(inside));
+    vOut.setAttribute("aria-pressed", String(!inside));
+    vHint.innerHTML = inside ? HINT_IN : HINT_OUT;
+    if (camHint) camHint.hidden = !inside;
   }
-  fInf.addEventListener("click", function () { setField(true); });
-  fFin.addEventListener("click", function () { setField(false); });
+  vIn.addEventListener("click", function () { setView(true); });
+  vOut.addEventListener("click", function () { setView(false); });
 
   /* --- camera: trascinamento per guardarsi intorno --- */
   var dragging = false, lastX = 0, lastY = 0;
@@ -1016,7 +1066,10 @@ SKETCHES.lattice = {
     inst.setCam({ x: v[0], y: v[1], z: v[2], yaw: v[3] * Math.PI / 180, pitch: v[4] * Math.PI / 180 });
   });
   document.getElementById("cam-reset").addEventListener("click", function () {
-    if (inst && inst.setCam) inst.setCam({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
+    if (!inst || !inst.setCam) return;
+    inst.setCam(params.mode === "outside"
+      ? { x: 0, y: 0.6, z: -5.5, yaw: 0, pitch: 0 }
+      : { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
   });
   document.getElementById("pause").addEventListener("click", function () {
     paused = !paused; this.setAttribute("aria-pressed", String(paused));
