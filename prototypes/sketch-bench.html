@@ -1,0 +1,610 @@
+<title>Sketch Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Martian+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground:#F2F4F7; --surface:#FFFFFF; --sunk:#E8ECF1;
+    --line:#D3DAE3; --line-strong:#B4BFCC;
+    --text:#10141A; --text-soft:#414B58; --text-mute:#6B7787;
+    --signal:#235E7D; --signal-soft:#DCEAF2;
+    --screen:#07090B;
+    --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+    --f-mono:"Martian Mono",ui-monospace,Menlo,monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0B0D11; --surface:#13171D; --sunk:#0F1216;
+      --line:#232A33; --line-strong:#333C48;
+      --text:#E7EBF1; --text-soft:#AEB8C6; --text-mute:#7B8798;
+      --signal:#7FB2CE; --signal-soft:#16242E;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0B0D11; --surface:#13171D; --sunk:#0F1216;
+    --line:#232A33; --line-strong:#333C48;
+    --text:#E7EBF1; --text-soft:#AEB8C6; --text-mute:#7B8798;
+    --signal:#7FB2CE; --signal-soft:#16242E;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--ground); color:var(--text);
+    font-family:var(--f-display); font-size:15px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .shell { max-width:1180px; margin:0 auto; padding:clamp(1.1rem,3.5vw,2.4rem); display:flex; flex-direction:column; gap:1.4rem; }
+
+  .masthead { display:flex; flex-wrap:wrap; gap:.6rem 1.5rem; align-items:baseline; justify-content:space-between; }
+  h1 { margin:0; font-size:clamp(1.5rem,3.4vw,2.1rem); font-weight:700; letter-spacing:-0.032em; }
+  .eyebrow { font-family:var(--f-mono); font-size:10px; letter-spacing:.15em; text-transform:uppercase; color:var(--text-mute); margin:0; }
+  .masthead p.sub { margin:0; color:var(--text-soft); font-size:.93rem; max-width:46ch; }
+
+  /* layout */
+  .bench { display:grid; gap:1rem; }
+  @media (min-width:900px) { .bench { grid-template-columns:250px 1fr; align-items:start; } }
+
+  /* rail */
+  .rail { display:flex; flex-direction:column; gap:1rem; }
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:3px; overflow:hidden; }
+  .panel > .phead { padding:.6rem .8rem; border-bottom:1px solid var(--line); background:var(--sunk); }
+  .panel > .pbody { padding:.75rem .8rem .85rem; display:flex; flex-direction:column; gap:.7rem; }
+
+  .picker { display:flex; flex-direction:column; }
+  .pick {
+    appearance:none; -webkit-appearance:none;
+    display:grid; grid-template-columns:1fr auto; gap:.2rem .6rem; align-items:center;
+    width:100%; text-align:left; cursor:pointer;
+    background:transparent; border:0; border-bottom:1px solid var(--line);
+    padding:.65rem .8rem; color:var(--text); font-family:inherit; font-size:.93rem;
+  }
+  .pick:last-child { border-bottom:0; }
+  .pick:hover { background:var(--sunk); }
+  .pick[aria-pressed="true"] { background:var(--signal-soft); box-shadow:inset 2px 0 0 var(--signal); }
+  .pick b { font-weight:600; letter-spacing:-0.01em; }
+  .pick .dim {
+    font-family:var(--f-mono); font-size:9px; letter-spacing:.1em;
+    border:1px solid var(--line-strong); border-radius:2px; padding:.12rem .3rem; color:var(--text-mute);
+  }
+  .pick[aria-pressed="true"] .dim { border-color:var(--signal); color:var(--signal); }
+  .pick small { grid-column:1/-1; color:var(--text-mute); font-size:.79rem; line-height:1.4; }
+  .pick:focus-visible { outline:2px solid var(--signal); outline-offset:-2px; }
+
+  .field { display:flex; flex-direction:column; gap:.3rem; }
+  .field label { font-family:var(--f-mono); font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--text-mute); }
+  .row { display:flex; gap:.45rem; }
+  input[type="number"] {
+    flex:1; min-width:0; font-family:var(--f-mono); font-size:.82rem; font-variant-numeric:tabular-nums;
+    background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
+    border-radius:2px; padding:.42rem .5rem;
+  }
+  input[type="range"] { width:100%; accent-color:var(--signal); }
+  button.act {
+    font-family:var(--f-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
+    border-radius:2px; padding:.42rem .6rem; cursor:pointer; white-space:nowrap;
+  }
+  button.act:hover { background:var(--sunk); border-color:var(--signal); color:var(--signal); }
+  button.act[aria-pressed="true"] { background:var(--signal-soft); border-color:var(--signal); color:var(--signal); }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
+  .val { font-family:var(--f-mono); font-size:.78rem; color:var(--text-mute); font-variant-numeric:tabular-nums; }
+
+  /* stage */
+  .stage { display:flex; flex-direction:column; gap:.8rem; min-width:0; }
+  .screen { background:var(--screen); border:1px solid var(--line); border-radius:3px; overflow:hidden; }
+  .screen canvas { display:block; width:100%; height:clamp(300px,52vh,560px); }
+  .screen-bar {
+    display:flex; flex-wrap:wrap; gap:.4rem 1.4rem; justify-content:space-between;
+    padding:.55rem .85rem; border-top:1px solid rgba(255,255,255,.07); background:rgba(255,255,255,.02);
+    font-family:var(--f-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#6E7B8B;
+  }
+  .screen-bar b { color:#AAB7C7; font-weight:400; }
+
+  .explain { background:var(--surface); border:1px solid var(--line); border-radius:3px; padding:.9rem 1rem 1rem; display:flex; flex-direction:column; gap:.5rem; }
+  .explain h2 { margin:0; font-size:.98rem; font-weight:600; letter-spacing:-0.01em; }
+  .explain p { margin:0; color:var(--text-soft); font-size:.9rem; max-width:70ch; }
+  pre.code {
+    margin:0; overflow-x:auto; background:var(--sunk); border:1px solid var(--line);
+    border-radius:2px; padding:.65rem .8rem;
+    font-family:var(--f-mono); font-size:.76rem; line-height:1.75; color:var(--text);
+  }
+  pre.code .c { color:var(--text-mute); }
+
+  footer { color:var(--text-mute); font-size:.82rem; padding-top:.4rem; }
+  footer code { font-family:var(--f-mono); font-size:.9em; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+
+<div class="shell">
+  <div class="masthead">
+    <div>
+      <p class="eyebrow">Banco di prova &middot; generazione procedurale senza dipendenze</p>
+      <h1>Sketch Bench</h1>
+    </div>
+    <p class="sub">Quattro generatori, stesso file, zero librerie. Due lavorano in 2D, due in 3D — e tutti e quattro disegnano sullo stesso canvas 2D.</p>
+  </div>
+
+  <div class="bench">
+    <div class="rail">
+      <div class="panel">
+        <div class="phead"><p class="eyebrow">Sketch</p></div>
+        <div class="picker" id="picker"></div>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><p class="eyebrow">Parametri</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="seed">Seed</label>
+            <div class="row">
+              <input type="number" id="seed" value="20250829" step="1">
+              <button class="act" id="reroll" title="Nuovo seed casuale">Cambia</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="density">Densità <span class="val" id="density-val">100%</span></label>
+            <input type="range" id="density" min="30" max="180" value="100" step="5">
+          </div>
+          <div class="field">
+            <label for="speed">Velocità <span class="val" id="speed-val">1.00&times;</span></label>
+            <input type="range" id="speed" min="0" max="250" value="100" step="5">
+          </div>
+          <div class="row">
+            <button class="act" id="pause" aria-pressed="false" style="flex:1">Pausa</button>
+            <button class="act" id="save" style="flex:1">PNG</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <figure class="screen" style="margin:0">
+        <canvas id="cv" aria-label="Sketch generativo in esecuzione"></canvas>
+        <figcaption class="screen-bar">
+          <span id="bar-left">&mdash;</span>
+          <span>fps <b id="bar-fps">&mdash;</b> &nbsp; frame <b id="bar-frame">0</b></span>
+        </figcaption>
+      </figure>
+
+      <div class="explain">
+        <h2 id="ex-title">&mdash;</h2>
+        <p id="ex-body">&mdash;</p>
+        <pre class="code" id="ex-code">&mdash;</pre>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Stesso seed &rarr; stesso risultato, sempre. Nessun modello linguistico in esecuzione: solo <code>Math</code>, un generatore pseudo-casuale seedabile e <code>CanvasRenderingContext2D</code>.
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- generatore pseudo-casuale seedabile ---------- */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------- rumore di valore 2D, tabella seedata ---------- */
+function makeNoise(rnd) {
+  var S = 128, g = new Float32Array(S * S), i;
+  for (i = 0; i < g.length; i++) g[i] = rnd();
+  function fade(t) { return t * t * (3 - 2 * t); }
+  return function (x, y) {
+    x = ((x % S) + S) % S; y = ((y % S) + S) % S;
+    var x0 = Math.floor(x), y0 = Math.floor(y);
+    var fx = fade(x - x0), fy = fade(y - y0);
+    var x1 = (x0 + 1) % S, y1 = (y0 + 1) % S;
+    var a = g[y0 * S + x0], b = g[y0 * S + x1], c = g[y1 * S + x0], d = g[y1 * S + x1];
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+  };
+}
+
+/* =======================================================================
+   PROIEZIONE 3D -> 2D
+   L'unica differenza fra uno sketch 2D e uno 3D in questo file.
+   Un punto (x,y,z) diventa un punto schermo dividendo per la profondità.
+   ======================================================================= */
+function project(x, y, z, w, h, camDist, focal) {
+  var zc = z + camDist;                  // profondità rispetto alla camera
+  if (zc < 0.3) return null;             // dietro la camera: scartato
+  var s = focal / zc;                    // <-- la divisione: tutto il 3D è qui
+  var k = Math.min(w, h * 1.7) * 0.46;   // scala in pixel
+  return { sx: w * 0.5 + x * s * k, sy: h * 0.5 + y * s * k, zc: zc, s: s };
+}
+
+/* ======================= SKETCH ======================= */
+var SKETCHES = {};
+
+/* --- 1. Flow field (2D) --- */
+SKETCHES.flow = {
+  label: "Flow field",
+  dim: "2D",
+  blurb: "Particelle che seguono un campo di direzioni ricavato dal rumore.",
+  clear: "trail",
+  title: "Flow field — 2D puro",
+  body: "Ogni particella legge un angolo dal campo di rumore nella sua posizione e ci si muove. Non cancellando del tutto il frame precedente, le tracce si accumulano e disegnano le linee di flusso. Due coordinate per particella, nessuna profondità.",
+  code: "<span class='c'>// per ogni particella, a ogni frame:</span>\nvar a = noise(p.x / 90, p.y / 90) * Math.PI * 4;\np.x += Math.cos(a) * 1.1;\np.y += Math.sin(a) * 1.1;",
+  create: function (rnd, w, h, density) {
+    var noise = makeNoise(rnd);
+    var N = Math.round(1400 * density), ps = [], i;
+    for (i = 0; i < N; i++) ps.push({ x: rnd() * w, y: rnd() * h, life: rnd() * 220 });
+    return {
+      count: N,
+      step: function (dt, w, h) {
+        for (var i = 0; i < ps.length; i++) {
+          var p = ps[i];
+          var a = noise(p.x / 90, p.y / 90) * Math.PI * 4;
+          p.x += Math.cos(a) * 1.1 * dt;
+          p.y += Math.sin(a) * 1.1 * dt;
+          p.life -= dt;
+          if (p.life <= 0 || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
+            p.x = rnd() * w; p.y = rnd() * h; p.life = 120 + rnd() * 160;
+          }
+        }
+      },
+      draw: function (ctx) {
+        ctx.fillStyle = "rgba(233,239,246,0.30)";
+        for (var i = 0; i < ps.length; i++) ctx.fillRect(ps[i].x, ps[i].y, 0.9, 0.9);
+      }
+    };
+  }
+};
+
+/* --- 2. Suddivisione ricorsiva (2D) --- */
+SKETCHES.split = {
+  label: "Suddivisione",
+  dim: "2D",
+  blurb: "Un rettangolo tagliato ricorsivamente, con rivelazione progressiva.",
+  clear: "full",
+  title: "Suddivisione ricorsiva — 2D puro",
+  body: "Si parte da un rettangolo e lo si taglia in due, poi si ripete su ogni metà finché non si è abbastanza piccoli. Il caso decide dove tagliare e in quale verso. Nessun moto: l'animazione è solo l'ordine in cui le celle appaiono.",
+  code: "<span class='c'>// ricorsione: taglia e ripeti su entrambe le metà</span>\nfunction split(x, y, w, h, d) {\n  if (d === 0 || (w < 26 &amp;&amp; h < 26)) return cells.push({x,y,w,h});\n  var vert = w > h ? rnd() &lt; 0.82 : rnd() &lt; 0.18;\n  var t = 0.3 + rnd() * 0.4;\n  <span class='c'>// ... due chiamate ricorsive sulle due parti</span>\n}",
+  create: function (rnd, w, h, density) {
+    var cells = [], maxD = Math.max(4, Math.round(8 * Math.sqrt(density)));
+    (function split(x, y, ww, hh, d) {
+      if (d === 0 || (ww < 26 && hh < 26) || (ww < 12 || hh < 12)) { cells.push({ x: x, y: y, w: ww, h: hh, g: rnd() }); return; }
+      var vert = ww > hh ? rnd() < 0.82 : rnd() < 0.18;
+      var t = 0.3 + rnd() * 0.4;
+      if (vert) { var cw = ww * t; split(x, y, cw, hh, d - 1); split(x + cw, y, ww - cw, hh, d - 1); }
+      else { var ch = hh * t; split(x, y, ww, ch, d - 1); split(x, y + ch, ww, hh - ch, d - 1); }
+    })(0, 0, w, h, maxD);
+    var shown = 0;
+    return {
+      count: cells.length,
+      step: function (dt) { shown = Math.min(cells.length, shown + dt * 1.6); },
+      draw: function (ctx) {
+        var n = Math.floor(shown);
+        for (var i = 0; i < n; i++) {
+          var c = cells[i], pad = 1.2;
+          ctx.fillStyle = "rgba(233,239,246," + (0.04 + c.g * 0.14).toFixed(3) + ")";
+          ctx.fillRect(c.x + pad, c.y + pad, Math.max(0, c.w - pad * 2), Math.max(0, c.h - pad * 2));
+          ctx.strokeStyle = "rgba(233,239,246," + (0.10 + c.g * 0.22).toFixed(3) + ")";
+          ctx.lineWidth = 0.7;
+          ctx.strokeRect(c.x + pad, c.y + pad, Math.max(0, c.w - pad * 2), Math.max(0, c.h - pad * 2));
+        }
+      },
+      done: function () { return shown >= cells.length; }
+    };
+  }
+};
+
+/* --- 3. Plexus (3D) --- */
+SKETCHES.plexus = {
+  label: "Plexus",
+  dim: "3D",
+  blurb: "Nodi nello spazio, archi per prossimità, triangoli fra triple vicine.",
+  clear: "full",
+  title: "Plexus — 3D disegnato in 2D",
+  body: "I nodi vivono in un cubo e hanno tre coordinate. Ogni frame vengono proiettati sullo schermo dividendo per la profondità, poi si tracciano gli archi fra i nodi abbastanza vicini nello spazio 3D — non sullo schermo. È la ragione per cui non si può fare sovrapponendo piani: un arco collega spesso un nodo vicino a uno lontano, quindi non appartiene a nessun piano.",
+  code: "<span class='c'>// la profondità decide posizione, dimensione e opacità</span>\nvar zc = z + camDist;\nvar s  = focal / zc;              <span class='c'>// &lt;- il 3D è tutto qui</span>\nvar sx = w/2 + x * s * k;\nvar sy = h/2 + y * s * k;\nvar fade = clamp((4.6 - zc) / 2.6);   <span class='c'>// lontano = tenue</span>",
+  create: function (rnd, w, h, density) {
+    var N = Math.round(150 * density), LINK = 0.46, pts = [], i;
+    for (i = 0; i < N; i++) pts.push({
+      x: rnd() * 2 - 1, y: rnd() * 2 - 1, z: rnd() * 2 - 1,
+      vx: (rnd() - .5) * .0022, vy: (rnd() - .5) * .0022, vz: (rnd() - .5) * .0022
+    });
+    var ang = 0, edges = 0, tris = 0;
+    return {
+      count: N,
+      step: function (dt) {
+        ang += dt * 0.0018;
+        for (var i = 0; i < N; i++) {
+          var p = pts[i];
+          p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+          if (p.x < -1 || p.x > 1) p.vx = -p.vx;
+          if (p.y < -1 || p.y > 1) p.vy = -p.vy;
+          if (p.z < -1 || p.z > 1) p.vz = -p.vz;
+        }
+      },
+      draw: function (ctx, w, h) {
+        var ca = Math.cos(ang), sa = Math.sin(ang);
+        var proj = new Array(N), fade = new Array(N), i;
+        for (i = 0; i < N; i++) {
+          var p = pts[i];
+          var rx = p.x * ca - p.z * sa, rz = p.x * sa + p.z * ca;
+          var q = project(rx, p.y, rz, w, h, 1.95, 1.30);
+          proj[i] = q;
+          fade[i] = q ? Math.max(0, Math.min(1, (3.55 - q.zc) / 2.15)) : 0;
+        }
+        var adj = [], a, b;
+        for (a = 0; a < N; a++) adj.push([]);
+        edges = 0;
+        for (a = 0; a < N; a++) {
+          if (!proj[a]) continue;
+          for (b = a + 1; b < N; b++) {
+            if (!proj[b]) continue;
+            var dx = pts[a].x - pts[b].x, dy = pts[a].y - pts[b].y, dz = pts[a].z - pts[b].z;
+            if (dx * dx + dy * dy + dz * dz < LINK * LINK) { adj[a].push(b); adj[b].push(a); edges++; }
+          }
+        }
+        ctx.globalCompositeOperation = "lighter";
+        tris = 0;
+        for (var c = 0; c < N; c++) {
+          var nb = adj[c];
+          for (var m = 0; m < nb.length; m++) {
+            var j = nb[m]; if (j < c) continue;
+            for (var n = m + 1; n < nb.length; n++) {
+              var k = nb[n]; if (k < j || adj[j].indexOf(k) === -1) continue;
+              var A = proj[c], B = proj[j], C = proj[k];
+              if (!A || !B || !C) continue;
+              var f = (fade[c] + fade[j] + fade[k]) / 3;
+              if (f <= 0.02) continue;
+              ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(B.sx, B.sy); ctx.lineTo(C.sx, C.sy); ctx.closePath();
+              ctx.fillStyle = "rgba(255,255,255," + (0.026 * f).toFixed(4) + ")";
+              ctx.fill(); tris++;
+            }
+          }
+        }
+        for (var e = 0; e < N; e++) {
+          if (!proj[e]) continue;
+          var lst = adj[e];
+          for (var q2 = 0; q2 < lst.length; q2++) {
+            var o = lst[q2]; if (o < e || !proj[o]) continue;
+            var ex = pts[e].x - pts[o].x, ey = pts[e].y - pts[o].y, ez = pts[e].z - pts[o].z;
+            var dd = Math.sqrt(ex * ex + ey * ey + ez * ez);
+            var al = (1 - dd / LINK) * (fade[e] + fade[o]) * 0.5;
+            if (al <= 0.01) continue;
+            ctx.strokeStyle = "rgba(226,233,242," + (al * 0.34).toFixed(4) + ")";
+            ctx.lineWidth = 0.55 + al * 0.5;
+            ctx.beginPath(); ctx.moveTo(proj[e].sx, proj[e].sy); ctx.lineTo(proj[o].sx, proj[o].sy); ctx.stroke();
+          }
+        }
+        for (var v = 0; v < N; v++) {
+          if (!proj[v] || fade[v] <= 0.02) continue;
+          ctx.beginPath(); ctx.arc(proj[v].sx, proj[v].sy, 0.7 + fade[v] * 1.9, 0, 6.2832);
+          ctx.fillStyle = "rgba(255,255,255," + (0.28 + fade[v] * 0.6).toFixed(3) + ")";
+          ctx.fill();
+        }
+        ctx.globalCompositeOperation = "source-over";
+      },
+      stats: function () { return "archi " + edges + " · triangoli " + tris; }
+    };
+  }
+};
+
+/* --- 4. Reticolo (3D) --- */
+SKETCHES.lattice = {
+  label: "Reticolo",
+  dim: "3D",
+  blurb: "Griglia cubica di punti che ruota su due assi, con dissolvenza in profondità.",
+  clear: "full",
+  title: "Reticolo — perché serve davvero la profondità",
+  body: "La stessa griglia, ruotata su due assi. Guardala girare: le facce si compenetrano, i punti lontani rimpiccioliscono e sbiadiscono, e la struttura si legge come un solido. Sovrapporre piani 2D fissi non produce mai questo, perché i piani non possono ruotare l'uno rispetto all'altro.",
+  code: "<span class='c'>// rotazione su Y, poi su X, poi proiezione</span>\nvar x1 =  x * cosY + z * sinY;\nvar z1 = -x * sinY + z * cosY;\nvar y2 =  y * cosX - z1 * sinX;\nvar z2 =  y * sinX + z1 * cosX;\nvar p  = project(x1, y2, z2, w, h, 3.2, 1.2);",
+  create: function (rnd, w, h, density) {
+    var G = Math.max(3, Math.round(6 * Math.cbrt(density))), pts = [], idx = {}, i, j, k;
+    for (i = 0; i < G; i++) for (j = 0; j < G; j++) for (k = 0; k < G; k++) {
+      var t = (G - 1) || 1;
+      idx[i + "," + j + "," + k] = pts.length;
+      pts.push({ x: (i / t) * 2 - 1, y: (j / t) * 2 - 1, z: (k / t) * 2 - 1, i: i, j: j, k: k, w: 0.65 + rnd() * 0.35 });
+    }
+    var links = [];
+    for (i = 0; i < G; i++) for (j = 0; j < G; j++) for (k = 0; k < G; k++) {
+      var a = idx[i + "," + j + "," + k];
+      if (i + 1 < G) links.push([a, idx[(i + 1) + "," + j + "," + k]]);
+      if (j + 1 < G) links.push([a, idx[i + "," + (j + 1) + "," + k]]);
+      if (k + 1 < G) links.push([a, idx[i + "," + j + "," + (k + 1)]]);
+    }
+    var t0 = 0;
+    return {
+      count: pts.length,
+      step: function (dt) { t0 += dt * 0.0042; },
+      draw: function (ctx, w, h) {
+        var cy = Math.cos(t0), sy = Math.sin(t0);
+        var cx = Math.cos(t0 * 0.63), sx = Math.sin(t0 * 0.63);
+        var proj = new Array(pts.length), fade = new Array(pts.length), n;
+        for (n = 0; n < pts.length; n++) {
+          var p = pts[n];
+          var x1 = p.x * cy + p.z * sy, z1 = -p.x * sy + p.z * cy;
+          var y2 = p.y * cx - z1 * sx, z2 = p.y * sx + z1 * cx;
+          var q = project(x1, y2, z2, w, h, 3.2, 1.2);
+          proj[n] = q;
+          fade[n] = q ? Math.max(0, Math.min(1, (5.0 - q.zc) / 3.0)) : 0;
+        }
+        for (n = 0; n < links.length; n++) {
+          var A = proj[links[n][0]], B = proj[links[n][1]];
+          if (!A || !B) continue;
+          var f = (fade[links[n][0]] + fade[links[n][1]]) * 0.5;
+          if (f <= 0.02) continue;
+          ctx.strokeStyle = "rgba(214,226,238," + (f * f * 0.30).toFixed(4) + ")";
+          ctx.lineWidth = 0.4 + f * 0.7;
+          ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(B.sx, B.sy); ctx.stroke();
+        }
+        ctx.globalCompositeOperation = "lighter";
+        for (n = 0; n < pts.length; n++) {
+          if (!proj[n] || fade[n] <= 0.02) continue;
+          ctx.beginPath(); ctx.arc(proj[n].sx, proj[n].sy, 0.6 + fade[n] * 2.1 * pts[n].w, 0, 6.2832);
+          ctx.fillStyle = "rgba(255,255,255," + (fade[n] * fade[n] * 0.75).toFixed(3) + ")";
+          ctx.fill();
+        }
+        ctx.globalCompositeOperation = "source-over";
+      },
+      stats: function () { return "nodi " + pts.length + " · archi " + links.length; }
+    };
+  }
+};
+
+/* ======================= RUNTIME ======================= */
+(function () {
+  var ORDER = ["flow", "split", "plexus", "lattice"];
+  var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  var W = 0, H = 0, DPR = 1;
+  var current = "plexus", inst = null, paused = false, frames = 0;
+  var seedEl = document.getElementById("seed");
+  var densEl = document.getElementById("density"), densVal = document.getElementById("density-val");
+  var spdEl = document.getElementById("speed"), spdVal = document.getElementById("speed-val");
+  var barLeft = document.getElementById("bar-left"), barFps = document.getElementById("bar-fps"), barFrame = document.getElementById("bar-frame");
+
+  /* rail */
+  var picker = document.getElementById("picker");
+  ORDER.forEach(function (key) {
+    var s = SKETCHES[key];
+    var b = document.createElement("button");
+    b.className = "pick"; b.type = "button"; b.dataset.key = key;
+    b.setAttribute("aria-pressed", String(key === current));
+    b.innerHTML = "<b></b><span class='dim'></span><small></small>";
+    b.querySelector("b").textContent = s.label;
+    b.querySelector(".dim").textContent = s.dim;
+    b.querySelector("small").textContent = s.blurb;
+    b.addEventListener("click", function () { select(key); });
+    picker.appendChild(b);
+  });
+
+  function select(key) {
+    current = key;
+    Array.prototype.forEach.call(picker.children, function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.key === key));
+    });
+    var s = SKETCHES[key];
+    document.getElementById("ex-title").textContent = s.title;
+    document.getElementById("ex-body").textContent = s.body;
+    document.getElementById("ex-code").innerHTML = s.code;
+    build();
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    var r = cv.getBoundingClientRect();
+    W = Math.max(1, Math.round(r.width));
+    H = Math.max(1, Math.round(r.height));
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  function build() {
+    if (!W || !H) resize();
+    var seed = parseInt(seedEl.value, 10); if (!isFinite(seed)) seed = 1;
+    var density = parseInt(densEl.value, 10) / 100;
+    inst = SKETCHES[current].create(mulberry32(seed >>> 0), W, H, density);
+    frames = 0;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = "#07090B"; ctx.fillRect(0, 0, W, H);
+  }
+
+  /* controls */
+  seedEl.addEventListener("change", build);
+  document.getElementById("reroll").addEventListener("click", function () {
+    seedEl.value = String(Math.floor(Math.random() * 99999999)); build();
+  });
+  densEl.addEventListener("input", function () { densVal.textContent = densEl.value + "%"; });
+  densEl.addEventListener("change", build);
+  spdEl.addEventListener("input", function () { spdVal.textContent = (spdEl.value / 100).toFixed(2) + "×"; });
+  document.getElementById("pause").addEventListener("click", function () {
+    paused = !paused; this.setAttribute("aria-pressed", String(paused));
+    this.textContent = paused ? "Riprendi" : "Pausa";
+  });
+  /* Salvataggio PNG.
+     Dentro il viewer degli Artifact un <a download> è inerte: il file va offerto
+     tramite la capability "downloads". In locale (file:// o server proprio) quella
+     capability non esiste e si ricade sul link classico. */
+  var saveBtn = document.getElementById("save");
+  var downloads = null, downloadsResolved = false;
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then(function (d) {
+      downloads = d; downloadsResolved = true;
+      if (!d) saveBtn.hidden = true;
+    }).catch(function () { downloadsResolved = true; });
+  } else {
+    downloadsResolved = true;
+  }
+
+  function flash(msg) {
+    var prev = saveBtn.textContent;
+    saveBtn.textContent = msg; saveBtn.disabled = true;
+    setTimeout(function () { saveBtn.textContent = prev; saveBtn.disabled = false; }, 1600);
+  }
+
+  saveBtn.addEventListener("click", function () {
+    var name = current + "-" + seedEl.value + ".png";
+    if (downloads) {
+      cv.toBlob(function (blob) {
+        if (!blob) { flash("Errore"); return; }
+        downloads.save({ filename: name, data: blob }).then(function () {
+          flash("Salvato");
+        }).catch(function (err) {
+          flash(err && err.code === "declined" ? "Annullato" : "Non riuscito");
+        });
+      }, "image/png");
+      return;
+    }
+    if (!downloadsResolved) { flash("Attendi…"); return; }
+    var a = document.createElement("a");
+    a.download = name; a.href = cv.toDataURL("image/png"); a.click();
+  });
+
+  var rt = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(rt); rt = setTimeout(function () { resize(); build(); }, 140);
+  });
+
+  /* loop a passo fisso: la simulazione avanza sempre di 1 unità per frame,
+     indipendentemente dal frame rate reale — è ciò che rende l'export riproducibile. */
+  var fpsAcc = 0, fpsN = 0, last = 0;
+  function loop(t) {
+    var real = last ? Math.min(100, t - last) : 16.7; last = t;
+    if (real > 0) { fpsAcc += 1000 / real; fpsN++; }
+
+    if (inst && !paused) {
+      var dt = parseInt(spdEl.value, 10) / 100;
+      if (dt > 0) { inst.step(dt, W, H); frames++; }
+
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      if (SKETCHES[current].clear === "trail") {
+        ctx.fillStyle = "rgba(7,9,11,0.055)"; ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = "#07090B"; ctx.fillRect(0, 0, W, H);
+      }
+      inst.draw(ctx, W, H);
+
+      if (SKETCHES[current].dim === "3D") {
+        var vg = ctx.createRadialGradient(W * .5, H * .45, Math.min(W, H) * .18, W * .5, H * .5, Math.max(W, H) * .78);
+        vg.addColorStop(0, "rgba(7,9,11,0)"); vg.addColorStop(1, "rgba(7,9,11,0.85)");
+        ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+      }
+
+      if (frames % 15 === 0) {
+        var extra = inst.stats ? inst.stats() : "elementi " + inst.count;
+        barLeft.textContent = SKETCHES[current].label + " · " + SKETCHES[current].dim + " · " + extra;
+        barFrame.textContent = String(frames);
+        if (fpsN) { barFps.textContent = (fpsAcc / fpsN).toFixed(0); fpsAcc = 0; fpsN = 0; }
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  select(current);
+  requestAnimationFrame(loop);
+})();
+</script>
