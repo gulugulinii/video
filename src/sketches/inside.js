@@ -5,7 +5,8 @@ import { makeBatch } from "../engine/batch.js";
 import { makeCam3D } from "../engine/cam3d.js";
 import { makeDof } from "../engine/dof.js";
 import { EXTENT_INF, pickCopy } from "../engine/field.js";
-import { keyLight } from "../engine/palette.js";
+import { keyLight, lightPos } from "../engine/palette.js";
+import { makeNoise3 } from "../engine/noise.js";
 
 /* --- 3. Immersione: nuvola di nodi con camera (3D) --- */
 export const sketch = {
@@ -16,13 +17,26 @@ export const sketch = {
   body: "I nodi vivono in un cubo che si ripete all'infinito. Archi fra quelli più vicini della soglia, triangoli fra le triple mutuamente collegate. L'estensione del campo decide quante copie del cubo restano accese: portala al minimo e resta una nuvola sola, portala al massimo e non ne esci mai. Poiché è una dissolvenza e non un interruttore, puoi muoverla mentre voli.",
   code: "<span class='c'>// la profondità decide posizione, dimensione e opacità</span>\nvar s = focal / z;              <span class='c'>// &lt;- il 3D è tutto qui</span>\n\n<span class='c'>// estensione: spegne le copie del cubo oltre il raggio R</span>\nvar env = clamp((R + soft - dist(mondo)) / soft);",
   create: function (rnd, w, h, density, P) {
-    var B = 2.6, N = Math.round(470 * density), NB = 6;
+    var B = 2.6, N = Math.round(600 * density), NB = 6;
     var C = makeCam3D(), D = makeDof();
+    /* Densità non uniforme. I nodi erano sparsi con probabilità uguale ovunque:
+       un campo omogeneo legge come rumore, non come struttura. Scartando le
+       posizioni dove il rumore è basso si formano addensamenti e radure, e la
+       nuvola comincia a somigliare a qualcosa invece che a una nevicata.
+       Il tetto sui tentativi garantisce che il ciclo finisca sempre. */
+    var nz = makeNoise3(rnd), SOGLIA = 0.44, MAX_TENT = 12;
     var pts = [], i;
-    for (i = 0; i < N; i++) pts.push({
-      x: (rnd() - .5) * B, y: (rnd() - .5) * B, z: (rnd() - .5) * B,
-      vx: (rnd() - .5) * .0016, vy: (rnd() - .5) * .0016, vz: (rnd() - .5) * .0016
-    });
+    for (i = 0; i < N; i++) {
+      var x, y, z, t = 0;
+      do {
+        x = (rnd() - .5) * B; y = (rnd() - .5) * B; z = (rnd() - .5) * B;
+        t++;
+      } while (nz(x * 2.4, y * 2.4, z * 2.4) < SOGLIA && t < MAX_TENT);
+      pts.push({
+        x: x, y: y, z: z,
+        vx: (rnd() - .5) * .0016, vy: (rnd() - .5) * .0016, vz: (rnd() - .5) * .0016
+      });
+    }
     var rel = new Float32Array(N * 3), env = new Float32Array(N), tmp = new Float64Array(7);
     var edges = 0, tris = 0;
     var prevEdges = new Set(), bornAcc = 0, diedAcc = 0, tRate = 0, rateB = 0, rateD = 0;
@@ -54,18 +68,29 @@ export const sketch = {
         var far = camR + B * 0.62, span = B * 0.75 + camR * 0.25;
         D.thresholds(Math.max(0.62, camR * 0.55), Math.max(1.55, camR * 0.98));
 
+        /* Punto focale. La luce c'era ma la geometria le era indifferente: il
+           quadro si riempiva in modo uniforme, senza un centro dell'attenzione e
+           senza spazio negativo. Legando la resa alla distanza dalla sorgente, la
+           struttura si addensa dove c'è luce e si dirada nel buio. Il fondo di
+           0.22 evita che gli angoli diventino vuoti morti. */
+        var LP = lightPos(w, h, P), raggio = Math.sqrt(w * w + h * h) * 1.05;
         var proj = new Array(N), fade = new Float32Array(N), vz = new Float32Array(N);
+        var foc = new Float32Array(N);
         for (n = 0; n < N; n++) {
           if (env[n] <= 0.01) { proj[n] = null; continue; }
           var q = C.project(rel[n * 3], rel[n * 3 + 1], rel[n * 3 + 2], w, h, k);
           proj[n] = q;
           if (!q) continue;
           vz[n] = q.z;
-          fade[n] = Math.max(0, Math.min(1, (far - q.z) / span)) * env[n];
+          var dfx = q.sx - LP[0], dfy = q.sy - LP[1];
+          var d = Math.sqrt(dfx * dfx + dfy * dfy) / raggio;
+          var v = Math.max(0, 1 - d);
+          foc[n] = 0.62 + 0.38 * v;
+          fade[n] = Math.max(0, Math.min(1, (far - q.z) / span)) * env[n] * foc[n];
         }
 
         var LINK = P ? P.link : 0.57, LINK2 = LINK * LINK;
-        var MAXTRI = P ? P.maxTri : 1100;
+        var MAXTRI = P ? P.maxTri : 1600;
         var cells = new Map(), HX = 73856093, HY = 19349663, HZ = 83492791;
         var gi = new Int32Array(N * 3);
         for (n = 0; n < N; n++) {
@@ -119,6 +144,10 @@ export const sketch = {
               if (!A || !Bp || !Cp) continue;
               var f = (fade[c] + fade[j] + fade[kk2]) / 3;
               if (f <= 0.03) continue;
+              /* Il diradamento lontano dalla luce e graduale, non un taglio: una
+                 soglia netta produceva una massa luminosa con un bordo visibile
+                 e il resto del quadro vuoto. */
+              if ((foc[c] + foc[j] + foc[kk2]) / 3 < 0.66) continue;
               var pt = S.path(S.tri, D.binOf((vz[c] + vz[j] + vz[kk2]) / 3), S.bucket(f));
               pt.moveTo(A.sx, A.sy); pt.lineTo(Bp.sx, Bp.sy); pt.lineTo(Cp.sx, Cp.sy); pt.closePath();
               tris++;
@@ -134,7 +163,9 @@ export const sketch = {
           pn.arc(proj[v].sx, proj[v].sy, r, 0, 6.2832);
         }
 
-        S.flush(L, 0.075, 0.62, [0.26, 0.62]);
+        /* Solo questo sketch chiede la concentrazione: e l'unico abbastanza
+           fitto perche la fascia media sia affollata. Vedi batch.js. */
+        S.flush(L, 0.27, 0.80, [0.24, 0.74], 0, { tri: 2.6, arco: 1.8, nodo: 1.4, peso: true });
         D.end(ctx, w, h, dpr);
 
         keyLight(ctx, w, h, P);

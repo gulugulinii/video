@@ -29,8 +29,8 @@ illeggibile il testo.
 |---|---|---|
 | F0 | Archivio permanente di piano e decisioni | fatto |
 | F1 | Estrarre il motore in moduli `src/` | fatto |
-| F2 | Passo di qualità grafica | **prossima** |
-| F3 | Componente sfondo `mountBackground()` | da fare |
+| F2 | Passo di qualità grafica | fatto |
+| F3 | Componente sfondo `mountBackground()` | **prossima** |
 | F4 | Verifica dello sfondo e del contrasto | da fare |
 
 Decisioni che reggono questo piano: [D13](decisioni.md#d13) (sketch scelto),
@@ -91,6 +91,24 @@ I cinque difetti di [D12](decisioni.md#d12), in ordine di resa:
 
 Metro di riscontro: `python3 tools/misura.py render.png`, con il picco al 99°
 percentile che deve salire da 85 verso i 144 del riferimento.
+
+**Fatto**, con due previsioni smentite dalla misura e annotate in
+[D17](decisioni.md#d17) e [D18](decisioni.md#d18):
+
+| | saturazione | luminanza media | 99° percentile |
+|---|---|---|---|
+| partenza | 0.10 | 24.5 | 50 |
+| arrivo | 0.03 | 40.1 | 94 |
+| riferimento | 0.00 | 36.0 | 144 |
+
+- **OKLab non serviva a quello che pensavo**: sulle palette che spediamo cambia
+  al massimo 3 livelli su 255. Resta perché serve alla palette su misura, dove
+  due tinte opposte in sRGB danno un grigio morto a metà rampa.
+- **La concentrazione della luce è opzionale**: applicata a tutti svuotava il
+  reticolo, quindi solo «Immersione» la chiede.
+- Fatti anche: densità non uniforme per scarto sul rumore, punto focale legato
+  alla sorgente luminosa, peso del tratto variabile, palette monocroma resa
+  davvero neutra, reticolo sfalsato per non partire su un proprio piano.
 
 ### F3 — Il componente sfondo
 

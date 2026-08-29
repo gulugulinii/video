@@ -26,7 +26,13 @@ export const sketch = {
     function id(a, b, c) { return (c * G + b) * G + a; }
     for (i = 0; i < G; i++) for (j = 0; j < G; j++) for (k = 0; k < G; k++) {
       var n = id(i, j, k);
-      px[n] = ((i / t) - 0.5) * B; py[n] = ((j / t) - 0.5) * B; pz[n] = ((k / t) - 0.5) * B;
+      /* Sfalsamento. La camera parte nell'origine e deriva lungo +z, quindi
+         restava per sempre sull'asse x=0,y=0. Se quell'asse giace su un piano
+         del reticolo si vede la griglia di taglio: poche righe e nient'altro.
+         Gli scarti sono diversi per asse cosi nessuno dei tre ci ricade. */
+      px[n] = ((i / t) - 0.5) * B + B * 0.061;
+      py[n] = ((j / t) - 0.5) * B + B * 0.113;
+      pz[n] = ((k / t) - 0.5) * B + B * 0.037;
       wob[n] = 0.55 + rnd() * 0.45;
     }
     /* archi del reticolo, e liste di adiacenza per la propagazione */

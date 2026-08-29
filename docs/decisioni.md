@@ -12,6 +12,87 @@ costoso rimettere in discussione più avanti. Non per ogni commit.
 
 ---
 
+<a id="d19"></a>
+
+## D19 — Il reticolo partiva su un piano di se stesso
+**Stato:** attivo
+
+Da dentro, il reticolo mostrava quattro linee e nient'altro. Non era rotto: la
+camera parte nell'origine e deriva lungo +z, quindi resta per sempre sull'asse
+x=0, y=0 — e quell'asse giaceva esattamente su un piano del reticolo. Si vedeva
+la griglia di taglio.
+
+Le posizioni sono sfalsate di frazioni diverse per asse (0.061, 0.113, 0.037 del
+lato) così nessuno dei tre ci ricade. Da dentro ora si legge un corridoio con
+profondità.
+
+Un valore di partenza che cade su una configurazione degenere è un difetto,
+non una scelta: chi apre lo sketch vede quello.
+
+---
+
+<a id="d18"></a>
+
+## D18 — La concentrazione della luce va a richiesta, non a tutti
+**Stato:** attivo
+
+L'opacità cresceva in proporzione diretta alla profondità: tutto finiva nella
+fascia media, senza nero e senza bianco. Elevando il livello a potenza la stessa
+quantità di inchiostro si sposta in alto — il lontano quasi sparisce, ed è così
+che nasce lo spazio negativo.
+
+Applicata a tutti gli sketch, **svuotava il reticolo**. La curva serve dove gli
+elementi sono tanti e si sovrappongono, perché lì la fascia media è affollata;
+su un fil di ferro, dove ogni linea conta, toglie e basta. Ora è un parametro di
+`flush()` e solo «Immersione» lo chiede; chi non lo passa mantiene la risposta
+lineare di prima.
+
+Secondo errore lungo la strada, corretto: inseguendo il 99° percentile con
+pochi triangoli molto opachi è uscita una massa bianca sotto la luce e il resto
+del quadro vuoto. Il riferimento non è così: è **più pieno**, con molti
+triangoli traslucidi. La strada giusta era più elementi a opacità moderata, non
+meno elementi opachi.
+
+**Numeri.** Partenza sat 0.10, luminanza media 24.5, 99° percentile 50.
+Arrivo sat 0.03, media 40.1, percentile 94. Riferimento 0.00 / 36 / 144.
+Più vicino, non uguale: il riferimento è reso da un motore 3D con profondità di
+campo e bloom veri, e inseguire l'ultimo scarto peggiorava l'immagine invece di
+migliorarla. Ci si ferma qui.
+
+---
+
+<a id="d17"></a>
+
+## D17 — OKLab non serviva a quello che pensavo
+**Stato:** attivo · correzione di [D12](#d12)
+
+In [D12](#d12) avevo scritto che passare a OKLab era «il singolo cambiamento con
+più resa per riga scritta». **Misurato, è falso.**
+
+Sulle cinque palette che spediamo la rampa cambia al massimo di 3 livelli su
+255: invisibile, e i numeri dell'immagine sono identici alla prima cifra
+decimale. La ragione è che quelle palette stanno tutte dentro una sola famiglia
+di tinte, e lì l'interpolazione in sRGB è già buona. Il difetto dei toni medi
+impastati si manifesta fra **tinte lontane**, che nelle nostre rampe non ci sono.
+
+Il codice resta, ma per un motivo diverso da quello per cui era stato scritto:
+la **palette su misura**. Con i selettori di colore chiunque può scegliere due
+tinte opposte, e lì lo scarto è drammatico — ciano verso rosso, a metà rampa:
+
+| | metà rampa | croma |
+|---|---|---|
+| sRGB | 120,120,120 | **0** — un grigio morto |
+| OKLab | 166,135,125 | 41 — tiene il colore |
+
+Quindi: inutile per le palette pronte, indispensabile per quella su misura. La
+tabella di conversione si calcola una volta quando la palette cambia, quindi
+non costa niente per frame.
+
+Lezione che vale oltre questo caso: una previsione su quanto renderà una
+modifica va misurata, non annunciata.
+
+---
+
 <a id="d16"></a>
 
 ## D16 — Un archivio permanente del ragionamento
@@ -103,6 +184,8 @@ Cinque problemi nominati, in ordine di resa per riga scritta:
 1. **Rampe impastate.** Le palette interpolano in sRGB, lo spazio in cui i colori
    sono codificati, non quello in cui l'occhio li percepisce: i toni medi
    diventano grigi. Passare a **OKLab**, percettivamente uniforme, ~20 righe.
+   → *Previsione sbagliata, corretta in [D17](#d17): sulle palette che spediamo
+   non cambia nulla di misurabile.*
 2. **Alte luci deboli.** Picco al 99° percentile misurato 85 contro i 144 del
    riferimento. Manca la gamma tonale alta.
 3. **Nessuna composizione.** Tutto centrato e uniforme: manca il punto focale e

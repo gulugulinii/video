@@ -458,45 +458,118 @@ function makeNoise3(rnd) {
 
 /* ===== src/engine/palette.js ===== */
 /* Palette e sorgente luminosa.
-   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+   Fonte unica: modificare qui, poi `python3 tools/costruisci.py`. */
 
 /* Palette. Il colore non viene appiccicato sopra: viene mappato sulla stessa
    grandezza che struttura già l'immagine, cioè la profondità. Ogni livello di
    opacità pesca un colore lungo la rampa, quindi il vicino e il lontano restano
-   distinguibili come nel monocromo — cambia solo la tinta. */
+   distinguibili come nel monocromo — cambia solo la tinta.
+
+   Le fermate si scrivono in sRGB perché è così che si leggono e si scelgono,
+   ma l'interpolazione avviene in OKLab: vedi più sotto il perché. */
 var PALETTES = {
-  mono:     { label: "Monocromo", bg: [9, 9, 9],    stops: [[104, 104, 104], [198, 201, 206], [255, 255, 255]] },
+  /* Monocromo: le fermate devono essere neutre davvero. La fermata media era
+     198,201,206 — croma 8, invisibile a occhio ma misurabile: bastava a portare
+     la saturazione dell'immagine a 0.77 dove il riferimento sta a 0.00. */
+  mono:     { label: "Monocromo", bg: [9, 9, 9],    stops: [[104, 104, 104], [201, 201, 201], [255, 255, 255]] },
   brace:    { label: "Brace",     bg: [14, 9, 7],   stops: [[116, 50, 26], [214, 126, 48], [255, 227, 170]] },
   ghiaccio: { label: "Ghiaccio",  bg: [7, 10, 14],  stops: [[44, 84, 122], [104, 175, 214], [228, 246, 255]] },
   alga:     { label: "Alga",      bg: [7, 13, 11],  stops: [[32, 90, 78], [86, 178, 140], [216, 248, 228]] },
   sabbia:   { label: "Sabbia",    bg: [13, 11, 8],  stops: [[108, 86, 56], [190, 162, 112], [249, 239, 216]] }
 };
-var PAL = PALETTES.mono;
 
-/* PAL era una variabile globale che il runtime riassegnava. Con i moduli le
-   importazioni sono in sola lettura, quindi la palette attiva resta privata al
-   modulo e si cambia da qui. Meglio della globale: nessuno la puo riassegnare
-   per sbaglio. */
-function setPalette(p) { PAL = (typeof p === "string" ? PALETTES[p] : p) || PALETTES.mono; }
+/* ---------- OKLab ----------
+   sRGB è lo spazio in cui i colori sono *codificati*, non quello in cui l'occhio
+   li *percepisce*. Interpolando in sRGB fra due colori saturi si passa per toni
+   medi grigi e spenti: è il difetto che rendeva impastate le rampe.
+
+   OKLab è uno spazio percettivamente uniforme: una distanza uguale corrisponde a
+   una differenza percepita uguale. Interpolando lì, le stesse tre fermate danno
+   una rampa pulita, senza cambiare nulla nelle palette scritte sopra.
+
+   Matrici di Björn Ottosson. */
+function srgbLin(c) {
+  c /= 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+function linSrgb(c) {
+  c = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(c * 255)));
+}
+function rgbToOklab(rgb) {
+  var R = srgbLin(rgb[0]), G = srgbLin(rgb[1]), B = srgbLin(rgb[2]);
+  var l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+  var m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+  var s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+  return [
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+  ];
+}
+function oklabToRgb(L, a, b) {
+  var l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  var m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  var s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  var l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+  return [
+    linSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    linSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    linSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)
+  ];
+}
+
+/* La conversione costa tre radici cubiche, e palAt() viene chiamata anche
+   centinaia di volte per frame dagli sketch 2D. La rampa viene quindi calcolata
+   una volta sola quando cambia la palette, e poi solo letta. */
+var PASSI = 128;
+var PAL = null, LUT = null;
+
+function costruisciLut(p) {
+  var lab = p.stops.map(rgbToOklab), n = lab.length - 1;
+  var out = new Array(PASSI + 1);
+  for (var i = 0; i <= PASSI; i++) {
+    var x = (i / PASSI) * n, k = Math.min(n - 1, x | 0), f = x - k;
+    var A = lab[k], B = lab[k + 1];
+    var c = oklabToRgb(A[0] + (B[0] - A[0]) * f,
+                       A[1] + (B[1] - A[1]) * f,
+                       A[2] + (B[2] - A[2]) * f);
+    out[i] = c[0] + "," + c[1] + "," + c[2];
+  }
+  return out;
+}
+
+function setPalette(p) {
+  PAL = (typeof p === "string" ? PALETTES[p] : p) || PALETTES.mono;
+  LUT = costruisciLut(PAL);
+}
 function getPalette() { return PAL; }
 function palAt(t) {
-  var st = PAL.stops, n = st.length - 1;
-  var x = Math.max(0, Math.min(0.9999, t)) * n, i = x | 0, f = x - i;
-  var a = st[i], b = st[i + 1];
-  return ((a[0] + (b[0] - a[0]) * f) | 0) + "," + ((a[1] + (b[1] - a[1]) * f) | 0) + "," + ((a[2] + (b[2] - a[2]) * f) | 0);
+  var i = (Math.max(0, Math.min(1, t)) * PASSI + 0.5) | 0;
+  return LUT[i];
 }
 function palBg() { return "rgb(" + PAL.bg.join(",") + ")"; }
 
-/* Sorgente luminosa in alto: è ciò che dà alla scena un "sopra" e un "sotto",
-   e quindi la sensazione di starci dentro invece di guardarla. */
-function keyLight(ctx, w, h, P) {
-  var dir = P && P.lightDir !== undefined ? P.lightDir : 90;
-  var hei = P && P.lightHei !== undefined ? P.lightHei : 1.16;
-  var itn = P && P.lightInt !== undefined ? P.lightInt : 1;
-  if (itn <= 0) return;
+setPalette(PALETTES.mono);
+
+/* ---------- luce ----------
+   Dove sta la sorgente sullo schermo. Serve al gradiente della luce, ma anche
+   agli sketch: modulando la densità con la distanza da questo punto la
+   geometria si addensa dove c'è luce e si dirada nel buio, ed è così che nasce
+   un punto focale invece di un riempimento uniforme. */
+function lightPos(w, h, P) {
+  var dir = (P && P.lightDir !== undefined) ? P.lightDir : 90;
+  var hei = (P && P.lightHei !== undefined) ? P.lightHei : 1.16;
   var rad = dir * Math.PI / 180;
-  var lx = w * 0.5 + Math.cos(rad) * w * 0.55;
-  var ly = h * 0.5 - hei * h * 0.9;
+  return [w * 0.5 + Math.cos(rad) * w * 0.55, h * 0.5 - hei * h * 0.9];
+}
+
+/* Sorgente luminosa: è ciò che dà alla scena un "sopra" e un "sotto", e quindi
+   la sensazione di starci dentro invece di guardarla. */
+function keyLight(ctx, w, h, P) {
+  var itn = (P && P.lightInt !== undefined) ? P.lightInt : 1;
+  if (itn <= 0) return;
+  var L = lightPos(w, h, P), lx = L[0], ly = L[1];
   var g = ctx.createRadialGradient(lx, ly, 0, lx, ly, h * 1.15);
   g.addColorStop(0, "rgba(255,255,255," + (0.20 * itn).toFixed(3) + ")");
   g.addColorStop(.45, "rgba(255,255,255," + (0.045 * itn).toFixed(3) + ")");
@@ -505,13 +578,6 @@ function keyLight(ctx, w, h, P) {
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = "source-over";
 }
-
-/* Estensione del campo, l'unica cosa che separa "finito" da "infinito".
-   Le posizioni si avvolgono sempre, quindi il mondo è sempre fatto di copie;
-   ciò che cambia è quante ne restano accese. Un inviluppo morbido attorno
-   all'origine spegne le copie oltre il raggio R: con R piccolo resta una sola
-   nuvola, con R grande se ne accendono infinite. Poiché è una dissolvenza e non
-   un interruttore, R si può muovere mentre voli senza nessuno scatto. */
 
 /* ===== src/engine/field.js ===== */
 /* Estensione del campo: quante copie del cubo restano accese.
@@ -732,23 +798,55 @@ function makeBatch(nb) {
   s.path = function (store, l, b) {
     var p = store[l][b]; if (!p) { p = new Path2D(); store[l][b] = p; } return p;
   };
+  /* Concentrazione della luce, a richiesta.
+
+     L'opacità cresceva in proporzione diretta al livello: tutto finiva nella
+     fascia media e mancava sia il nero sia il bianco. Misurato contro il video
+     di riferimento, il 99° percentile di luminanza era 50 contro 144.
+
+     Elevando il livello a potenza, la stessa quantità di inchiostro si sposta
+     verso l'alto: il lontano quasi sparisce — ed è così che nasce lo spazio
+     negativo — mentre il vicino diventa davvero luminoso.
+
+     È opzionale, e non per pigrizia: applicata a tutti gli sketch svuotava il
+     reticolo. La curva serve dove gli elementi sono tanti e si sovrappongono,
+     perché lì la fascia media è affollata; su un fil di ferro, dove ogni linea
+     conta, toglie e basta. Chi non passa uno stile mantiene la risposta lineare.
+
+     Le potenze sono diverse per tipo perché i triangoli coprono area e le linee
+     no: agli stessi valori i triangoli imbiancherebbero il quadro. */
+  var LINEARE = { tri: 1, arco: 1, nodo: 1, peso: false };
+
   /* glowA: archi "accesi", quelli dove due fronti di crescita si incontrano.
      Prendono sempre la cima della rampa di colore, così si staccano. */
-  s.flush = function (L, triA, edgeA, nodeA, glowA) {
+  s.flush = function (L, triA, edgeA, nodeA, glowA, stile) {
+    var st = stile || LINEARE;
     for (var l = 0; l < 3; l++) {
       var x = L[l].ctx;
       for (var b = 0; b < nb; b++) {
         var a = (b + 0.5) / nb;
         var col = palAt(a);
-        if (s.tri[l][b]) { x.fillStyle = "rgba(" + col + "," + (triA * a).toFixed(4) + ")"; x.fill(s.tri[l][b]); }
-        if (s.edge[l][b]) {
-          x.strokeStyle = "rgba(" + col + "," + (edgeA * a).toFixed(4) + ")";
-          x.lineWidth = 0.5 + a * 0.8; x.stroke(s.edge[l][b]);
+        var aTri = st.tri === 1 ? a : Math.pow(a, st.tri);
+        var aArco = st.arco === 1 ? a : Math.pow(a, st.arco);
+        var aNodo = st.nodo === 1 ? a : Math.pow(a, st.nodo);
+        if (s.tri[l][b]) {
+          x.fillStyle = "rgba(" + col + "," + (triA * aTri).toFixed(4) + ")";
+          x.fill(s.tri[l][b]);
         }
-        if (s.node[l][b]) { x.fillStyle = "rgba(" + col + "," + (nodeA[0] + a * nodeA[1]).toFixed(3) + ")"; x.fill(s.node[l][b]); }
+        if (s.edge[l][b]) {
+          x.strokeStyle = "rgba(" + col + "," + (edgeA * aArco).toFixed(4) + ")";
+          /* peso del tratto: gli archi vicini marcati, i lontani un filo */
+          x.lineWidth = st.peso ? 0.35 + a * a * 1.9 : 0.5 + a * 0.8;
+          x.stroke(s.edge[l][b]);
+        }
+        if (s.node[l][b]) {
+          x.fillStyle = "rgba(" + col + "," + (nodeA[0] + aNodo * nodeA[1]).toFixed(3) + ")";
+          x.fill(s.node[l][b]);
+        }
         if (glowA && s.glow[l][b]) {
-          x.strokeStyle = "rgba(" + palAt(0.99) + "," + (glowA * (0.35 + a * 0.65)).toFixed(4) + ")";
-          x.lineWidth = 0.9 + a * 1.5; x.stroke(s.glow[l][b]);
+          x.strokeStyle = "rgba(" + palAt(0.99) + "," + (glowA * (0.35 + aArco * 0.65)).toFixed(4) + ")";
+          x.lineWidth = st.peso ? 0.7 + a * a * 1.8 : 0.9 + a * 1.5;
+          x.stroke(s.glow[l][b]);
         }
       }
     }
@@ -955,6 +1053,7 @@ const sketch_split = {
 
 
 
+
 /* --- 3. Immersione: nuvola di nodi con camera (3D) --- */
 const sketch_inside = {
   label: "Immersione", dim: "3D", hasCam: true, hasGen: true, hasDrift: true,
@@ -964,13 +1063,26 @@ const sketch_inside = {
   body: "I nodi vivono in un cubo che si ripete all'infinito. Archi fra quelli più vicini della soglia, triangoli fra le triple mutuamente collegate. L'estensione del campo decide quante copie del cubo restano accese: portala al minimo e resta una nuvola sola, portala al massimo e non ne esci mai. Poiché è una dissolvenza e non un interruttore, puoi muoverla mentre voli.",
   code: "<span class='c'>// la profondità decide posizione, dimensione e opacità</span>\nvar s = focal / z;              <span class='c'>// &lt;- il 3D è tutto qui</span>\n\n<span class='c'>// estensione: spegne le copie del cubo oltre il raggio R</span>\nvar env = clamp((R + soft - dist(mondo)) / soft);",
   create: function (rnd, w, h, density, P) {
-    var B = 2.6, N = Math.round(470 * density), NB = 6;
+    var B = 2.6, N = Math.round(600 * density), NB = 6;
     var C = makeCam3D(), D = makeDof();
+    /* Densità non uniforme. I nodi erano sparsi con probabilità uguale ovunque:
+       un campo omogeneo legge come rumore, non come struttura. Scartando le
+       posizioni dove il rumore è basso si formano addensamenti e radure, e la
+       nuvola comincia a somigliare a qualcosa invece che a una nevicata.
+       Il tetto sui tentativi garantisce che il ciclo finisca sempre. */
+    var nz = makeNoise3(rnd), SOGLIA = 0.44, MAX_TENT = 12;
     var pts = [], i;
-    for (i = 0; i < N; i++) pts.push({
-      x: (rnd() - .5) * B, y: (rnd() - .5) * B, z: (rnd() - .5) * B,
-      vx: (rnd() - .5) * .0016, vy: (rnd() - .5) * .0016, vz: (rnd() - .5) * .0016
-    });
+    for (i = 0; i < N; i++) {
+      var x, y, z, t = 0;
+      do {
+        x = (rnd() - .5) * B; y = (rnd() - .5) * B; z = (rnd() - .5) * B;
+        t++;
+      } while (nz(x * 2.4, y * 2.4, z * 2.4) < SOGLIA && t < MAX_TENT);
+      pts.push({
+        x: x, y: y, z: z,
+        vx: (rnd() - .5) * .0016, vy: (rnd() - .5) * .0016, vz: (rnd() - .5) * .0016
+      });
+    }
     var rel = new Float32Array(N * 3), env = new Float32Array(N), tmp = new Float64Array(7);
     var edges = 0, tris = 0;
     var prevEdges = new Set(), bornAcc = 0, diedAcc = 0, tRate = 0, rateB = 0, rateD = 0;
@@ -1002,18 +1114,29 @@ const sketch_inside = {
         var far = camR + B * 0.62, span = B * 0.75 + camR * 0.25;
         D.thresholds(Math.max(0.62, camR * 0.55), Math.max(1.55, camR * 0.98));
 
+        /* Punto focale. La luce c'era ma la geometria le era indifferente: il
+           quadro si riempiva in modo uniforme, senza un centro dell'attenzione e
+           senza spazio negativo. Legando la resa alla distanza dalla sorgente, la
+           struttura si addensa dove c'è luce e si dirada nel buio. Il fondo di
+           0.22 evita che gli angoli diventino vuoti morti. */
+        var LP = lightPos(w, h, P), raggio = Math.sqrt(w * w + h * h) * 1.05;
         var proj = new Array(N), fade = new Float32Array(N), vz = new Float32Array(N);
+        var foc = new Float32Array(N);
         for (n = 0; n < N; n++) {
           if (env[n] <= 0.01) { proj[n] = null; continue; }
           var q = C.project(rel[n * 3], rel[n * 3 + 1], rel[n * 3 + 2], w, h, k);
           proj[n] = q;
           if (!q) continue;
           vz[n] = q.z;
-          fade[n] = Math.max(0, Math.min(1, (far - q.z) / span)) * env[n];
+          var dfx = q.sx - LP[0], dfy = q.sy - LP[1];
+          var d = Math.sqrt(dfx * dfx + dfy * dfy) / raggio;
+          var v = Math.max(0, 1 - d);
+          foc[n] = 0.62 + 0.38 * v;
+          fade[n] = Math.max(0, Math.min(1, (far - q.z) / span)) * env[n] * foc[n];
         }
 
         var LINK = P ? P.link : 0.57, LINK2 = LINK * LINK;
-        var MAXTRI = P ? P.maxTri : 1100;
+        var MAXTRI = P ? P.maxTri : 1600;
         var cells = new Map(), HX = 73856093, HY = 19349663, HZ = 83492791;
         var gi = new Int32Array(N * 3);
         for (n = 0; n < N; n++) {
@@ -1067,6 +1190,10 @@ const sketch_inside = {
               if (!A || !Bp || !Cp) continue;
               var f = (fade[c] + fade[j] + fade[kk2]) / 3;
               if (f <= 0.03) continue;
+              /* Il diradamento lontano dalla luce e graduale, non un taglio: una
+                 soglia netta produceva una massa luminosa con un bordo visibile
+                 e il resto del quadro vuoto. */
+              if ((foc[c] + foc[j] + foc[kk2]) / 3 < 0.66) continue;
               var pt = S.path(S.tri, D.binOf((vz[c] + vz[j] + vz[kk2]) / 3), S.bucket(f));
               pt.moveTo(A.sx, A.sy); pt.lineTo(Bp.sx, Bp.sy); pt.lineTo(Cp.sx, Cp.sy); pt.closePath();
               tris++;
@@ -1082,7 +1209,9 @@ const sketch_inside = {
           pn.arc(proj[v].sx, proj[v].sy, r, 0, 6.2832);
         }
 
-        S.flush(L, 0.075, 0.62, [0.26, 0.62]);
+        /* Solo questo sketch chiede la concentrazione: e l'unico abbastanza
+           fitto perche la fascia media sia affollata. Vedi batch.js. */
+        S.flush(L, 0.27, 0.80, [0.24, 0.74], 0, { tri: 2.6, arco: 1.8, nodo: 1.4, peso: true });
         D.end(ctx, w, h, dpr);
 
         keyLight(ctx, w, h, P);
@@ -1324,7 +1453,13 @@ const sketch_lattice = {
     function id(a, b, c) { return (c * G + b) * G + a; }
     for (i = 0; i < G; i++) for (j = 0; j < G; j++) for (k = 0; k < G; k++) {
       var n = id(i, j, k);
-      px[n] = ((i / t) - 0.5) * B; py[n] = ((j / t) - 0.5) * B; pz[n] = ((k / t) - 0.5) * B;
+      /* Sfalsamento. La camera parte nell'origine e deriva lungo +z, quindi
+         restava per sempre sull'asse x=0,y=0. Se quell'asse giace su un piano
+         del reticolo si vede la griglia di taglio: poche righe e nient'altro.
+         Gli scarti sono diversi per asse cosi nessuno dei tre ci ricade. */
+      px[n] = ((i / t) - 0.5) * B + B * 0.061;
+      py[n] = ((j / t) - 0.5) * B + B * 0.113;
+      pz[n] = ((k / t) - 0.5) * B + B * 0.037;
       wob[n] = 0.55 + rnd() * 0.45;
     }
     /* archi del reticolo, e liste di adiacenza per la propagazione */
