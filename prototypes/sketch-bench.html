@@ -8,7 +8,7 @@
     --line:#D3DAE3; --line-strong:#B4BFCC;
     --text:#10141A; --text-soft:#414B58; --text-mute:#6B7787;
     --signal:#235E7D; --signal-soft:#DCEAF2;
-    --screen:#07090B;
+    --screen:#090909;
     --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
     --f-mono:"Martian Mono",ui-monospace,Menlo,monospace;
     color-scheme: light;
@@ -82,6 +82,15 @@
     border-radius:2px; padding:.42rem .5rem;
   }
   input[type="range"] { width:100%; accent-color:var(--signal); }
+  input[type="text"] {
+    width:100%; min-width:0; font-family:var(--f-mono); font-size:.74rem; font-variant-numeric:tabular-nums;
+    background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
+    border-radius:2px; padding:.42rem .5rem;
+  }
+  .hint { margin:0; font-size:.78rem; line-height:1.5; color:var(--text-mute); }
+  .hint b { font-family:var(--f-mono); font-size:.9em; font-weight:400; color:var(--text-soft); }
+  #cv { touch-action:none; cursor:grab; }
+  #cv.dragging { cursor:grabbing; }
   button.act {
     font-family:var(--f-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
     background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
@@ -124,7 +133,7 @@
       <p class="eyebrow">Banco di prova &middot; generazione procedurale senza dipendenze</p>
       <h1>Sketch Bench</h1>
     </div>
-    <p class="sub">Quattro generatori, stesso file, zero librerie. Due lavorano in 2D, due in 3D — e tutti e quattro disegnano sullo stesso canvas 2D.</p>
+    <p class="sub">Cinque generatori, stesso file, zero librerie. Due lavorano in 2D, tre in 3D — e tutti e cinque disegnano sullo stesso canvas 2D.</p>
   </div>
 
   <div class="bench">
@@ -152,10 +161,26 @@
             <label for="speed">Velocità <span class="val" id="speed-val">1.00&times;</span></label>
             <input type="range" id="speed" min="0" max="250" value="100" step="5">
           </div>
+          <div class="field" id="fov-field" hidden>
+            <label for="fov">Prospettiva <span class="val" id="fov-val">1.00</span></label>
+            <input type="range" id="fov" min="45" max="220" value="100" step="5">
+          </div>
           <div class="row">
             <button class="act" id="pause" aria-pressed="false" style="flex:1">Pausa</button>
             <button class="act" id="save" style="flex:1">PNG</button>
           </div>
+        </div>
+      </div>
+
+      <div class="panel" id="cam-panel" hidden>
+        <div class="phead"><p class="eyebrow">Camera</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="cam">Posizione &amp; sguardo</label>
+            <input type="text" id="cam" spellcheck="false" value="0, 0, 0, 0, 0">
+          </div>
+          <button class="act" id="cam-reset">Riporta all'origine</button>
+          <p class="hint">Trascina sul canvas per guardarti intorno. <b>W/S</b> o <b>↑/↓</b> per avanzare, <b>A/D</b> per traslare, <b>R/F</b> per salire e scendere. Il campo è infinito: non ne esci mai.</p>
         </div>
       </div>
     </div>
@@ -393,7 +418,253 @@ SKETCHES.plexus = {
   }
 };
 
-/* --- 4. Reticolo (3D) --- */
+/* --- 4. Immersione: la camera sta DENTRO la nuvola (3D) --- */
+SKETCHES.inside = {
+  label: "Immersione",
+  dim: "3D",
+  blurb: "La camera è dentro il campo. Trascina per guardarti intorno, W/S per volare.",
+  clear: "full",
+  hasCam: true,
+  title: "Immersione — la camera è dentro la nuvola",
+  body: "Tre differenze rispetto a «Plexus», e sono tutte sulla posizione di chi guarda. Primo: il campo è infinito — i nodi si avvolgono attorno alla camera, così non ne esci mai. Secondo: c'è una camera vera, con posizione e direzione di sguardo, che puoi muovere. Terzo: il disegnato viene diviso in tre strati per distanza e lo strato vicino viene sfocato — è la profondità di campo, ed è l'unico punto in cui i piani sovrapposti servono davvero.",
+  code: "<span class='c'>// mondo -&gt; vista: sposta secondo la camera, poi ruota</span>\nvar dx = wrap(p.x - cam.x), dy = wrap(p.y - cam.y), dz = wrap(p.z - cam.z);\nvar x1 = dx * cy - dz * sy,  z1 = dx * sy + dz * cy;   <span class='c'>// imbardata</span>\nvar y2 = dy * cp - z1 * sp,  z2 = dy * sp + z1 * cp;   <span class='c'>// beccheggio</span>\n\n<span class='c'>// wrap(): il campo si ripete, la camera non ne esce mai</span>\nfunction wrap(v) { return v - B * Math.round(v / B); }\n\n<span class='c'>// profondità di campo: tre strati, solo il vicino sfocato</span>\nctx.filter = 'blur(7px)';   ctx.drawImage(vicino, 0, 0, w, h);",
+  create: function (rnd, w, h, density) {
+    var B = 2.6;                                   // lato della cella che si ripete
+    var LINK = 0.57, LINK2 = LINK * LINK;
+    var N = Math.round(470 * density);
+    var MAXTRI = 1100;                             // tetto per proteggere il frame rate
+    var NB = 6;                                    // livelli di opacità per il raggruppamento
+    var pts = [], i;
+    for (i = 0; i < N; i++) pts.push({
+      x: (rnd() - .5) * B, y: (rnd() - .5) * B, z: (rnd() - .5) * B,
+      vx: (rnd() - .5) * .0016, vy: (rnd() - .5) * .0016, vz: (rnd() - .5) * .0016
+    });
+
+    var cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
+    var focal = 1.0, drift = 0.30;
+    var rel = new Float32Array(N * 3);             // posizioni relative alla camera, avvolte
+    var edges = 0, tris = 0;
+
+    function wrap(v) { return v - B * Math.round(v / B); }
+
+    /* Tre strati per la profondità di campo.
+       Gli strati sfocati sono renderizzati a metà risoluzione: la sfocatura
+       nasconde la perdita di dettaglio e dimezza i pixel da riempire. */
+    var LSCALE = [0.5, 1, 0.5];        // 0 = vicino, 1 = a fuoco, 2 = lontano
+    var BLUR = [7, 0, 1.4];            // raggio di sfocatura in pixel logici
+    var layers = null, lw = 0, lh = 0, ldpr = 0;
+    function ensureLayers(w, h, dpr) {
+      if (layers && lw === w && lh === h && ldpr === dpr) return;
+      lw = w; lh = h; ldpr = dpr; layers = [];
+      for (var n = 0; n < 3; n++) {
+        var cw = Math.max(1, Math.round(w * dpr * LSCALE[n]));
+        var ch = Math.max(1, Math.round(h * dpr * LSCALE[n]));
+        var c = document.createElement("canvas");
+        c.width = cw; c.height = ch;
+        var lay = { cv: c, ctx: c.getContext("2d"), scale: LSCALE[n], tmp: null, tctx: null };
+        if (BLUR[n] > 0) {
+          var t = document.createElement("canvas");
+          t.width = cw; t.height = ch;
+          lay.tmp = t; lay.tctx = t.getContext("2d");
+        }
+        layers.push(lay);
+      }
+    }
+
+    /* Sfocare lo strato nella SUA risoluzione ridotta costa un quarto dei pixel
+       rispetto a sfocarlo dopo l'ingrandimento, e il risultato è lo stesso. */
+    function blurred(lay, dpr) {
+      if (!lay.tmp) return lay.cv;
+      var r = BLUR[layers.indexOf(lay)] * dpr * lay.scale;
+      lay.tctx.setTransform(1, 0, 0, 1, 0, 0);
+      lay.tctx.clearRect(0, 0, lay.tmp.width, lay.tmp.height);
+      if ("filter" in lay.tctx) lay.tctx.filter = "blur(" + r.toFixed(2) + "px)";
+      lay.tctx.drawImage(lay.cv, 0, 0);
+      if ("filter" in lay.tctx) lay.tctx.filter = "none";
+      return lay.tmp;
+    }
+    /* soglie: 0 = vicino (sfocato), 1 = a fuoco, 2 = lontano */
+    function bin(z) { return z < 0.62 ? 0 : (z < 1.55 ? 1 : 2); }
+
+    return {
+      count: N,
+      getCam: function () { return cam; },
+      setCam: function (c) {
+        cam.x = c.x; cam.y = c.y; cam.z = c.z; cam.yaw = c.yaw; cam.pitch = c.pitch;
+      },
+      step: function (dt, w, h, input) {
+        if (input) {
+          cam.yaw += input.lookX * 0.0040;
+          cam.pitch += input.lookY * 0.0040;
+          cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch));
+          if (input.fov) focal = input.fov;
+        }
+        var cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+        var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+        /* assi della camera nel mondo, ricavati invertendo la rotazione di vista */
+        var fwd = [sy * cp, sp, cy * cp];
+        var rgt = [cy, 0, -sy];
+        var up = [-sp * sy, cp, -sp * cy];
+
+        var mf = input ? input.moveF : 0, mr = input ? input.moveR : 0, mu = input ? input.moveU : 0;
+        if (mf === 0 && mr === 0 && mu === 0) mf = drift;   /* deriva automatica in avanti */
+        var sc = 0.0060 * dt;
+        cam.x += (fwd[0] * mf + rgt[0] * mr + up[0] * mu) * sc;
+        cam.y += (fwd[1] * mf + rgt[1] * mr + up[1] * mu) * sc;
+        cam.z += (fwd[2] * mf + rgt[2] * mr + up[2] * mu) * sc;
+
+        for (var i = 0; i < N; i++) {
+          var p = pts[i];
+          p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+          rel[i * 3] = wrap(p.x - cam.x);
+          rel[i * 3 + 1] = wrap(p.y - cam.y);
+          rel[i * 3 + 2] = wrap(p.z - cam.z);
+        }
+      },
+      draw: function (ctx, w, h) {
+        var dpr = ctx.getTransform ? ctx.getTransform().a : 1;
+        ensureLayers(w, h, dpr);
+        var n, l, bk;
+        for (n = 0; n < 3; n++) {
+          var lc = layers[n].ctx, sc = dpr * layers[n].scale;
+          lc.setTransform(sc, 0, 0, sc, 0, 0);
+          lc.clearRect(0, 0, w, h);
+          lc.globalCompositeOperation = "lighter";
+        }
+        /* Un percorso per ogni coppia (strato, livello di opacità): invece di
+           migliaia di stroke() e fill() se ne fanno poche decine. */
+        var triP = [], edgeP = [], nodeP = [];
+        for (l = 0; l < 3; l++) {
+          triP.push(new Array(NB)); edgeP.push(new Array(NB)); nodeP.push(new Array(NB));
+        }
+        function path(store, l, b) {
+          var p = store[l][b];
+          if (!p) { p = new Path2D(); store[l][b] = p; }
+          return p;
+        }
+        function bucket(a) { var b = (a * NB) | 0; return b < 0 ? 0 : (b >= NB ? NB - 1 : b); }
+
+        var cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+        var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+        var k = Math.min(w, h * 1.7) * 0.5;
+        var proj = new Array(N), fade = new Array(N), vz = new Float32Array(N);
+
+        for (n = 0; n < N; n++) {
+          var dx = rel[n * 3], dy = rel[n * 3 + 1], dz = rel[n * 3 + 2];
+          var x1 = dx * cy - dz * sy, z1 = dx * sy + dz * cy;
+          var y2 = dy * cp - z1 * sp, z2 = dy * sp + z1 * cp;
+          if (z2 < 0.09) { proj[n] = null; fade[n] = 0; continue; }
+          var s = focal / z2;
+          proj[n] = { sx: w * 0.5 + x1 * s * k, sy: h * 0.5 + y2 * s * k };
+          vz[n] = z2;
+          /* dissolvenza: i lontani svaniscono, i vicinissimi anche (escono dal fuoco) */
+          fade[n] = Math.max(0, Math.min(1, (B * 0.62 - z2) / (B * 0.42)));
+        }
+
+        /* Vicini per prossimità, tramite hash spaziale sulle posizioni avvolte.
+           Chiave intera invece che stringa: le collisioni sono innocue perché
+           la distanza viene comunque verificata. */
+        var cells = new Map();
+        var HX = 73856093, HY = 19349663, HZ = 83492791;
+        var gi = new Int32Array(N * 3);
+        for (n = 0; n < N; n++) {
+          var gx = Math.floor(rel[n * 3] / LINK), gy = Math.floor(rel[n * 3 + 1] / LINK), gz = Math.floor(rel[n * 3 + 2] / LINK);
+          gi[n * 3] = gx; gi[n * 3 + 1] = gy; gi[n * 3 + 2] = gz;
+          var key = (Math.imul(gx, HX) ^ Math.imul(gy, HY) ^ Math.imul(gz, HZ)) >>> 0;
+          var b = cells.get(key); if (!b) { b = []; cells.set(key, b); } b.push(n);
+        }
+        var adj = new Array(N), edgeSet = new Set();
+        for (n = 0; n < N; n++) adj[n] = [];
+        edges = 0;
+        for (n = 0; n < N; n++) {
+          if (!proj[n]) continue;
+          for (var ox = -1; ox <= 1; ox++) for (var oy = -1; oy <= 1; oy++) for (var oz = -1; oz <= 1; oz++) {
+            var ck = (Math.imul(gi[n * 3] + ox, HX) ^ Math.imul(gi[n * 3 + 1] + oy, HY) ^ Math.imul(gi[n * 3 + 2] + oz, HZ)) >>> 0;
+            var cell = cells.get(ck);
+            if (!cell) continue;
+            for (var ci = 0; ci < cell.length; ci++) {
+              var m = cell[ci];
+              if (m <= n || !proj[m]) continue;
+              var ax = rel[n * 3] - rel[m * 3], ay = rel[n * 3 + 1] - rel[m * 3 + 1], az = rel[n * 3 + 2] - rel[m * 3 + 2];
+              var d2 = ax * ax + ay * ay + az * az;
+              if (d2 >= LINK2 || edgeSet.has(n * N + m)) continue;
+              adj[n].push(m); adj[m].push(n); edgeSet.add(n * N + m); edges++;
+
+              /* l'arco: proiettati i due estremi, la retta fra loro è l'arco */
+              var al = (1 - Math.sqrt(d2) / LINK) * (fade[n] + fade[m]) * 0.5;
+              if (al <= 0.012) continue;
+              bk = bucket(al);
+              var pe = path(edgeP, bin((vz[n] + vz[m]) / 2), bk);
+              pe.moveTo(proj[n].sx, proj[n].sy); pe.lineTo(proj[m].sx, proj[m].sy);
+            }
+          }
+        }
+
+        /* triangoli: triple mutuamente adiacenti */
+        tris = 0;
+        for (var c = 0; c < N && tris < MAXTRI; c++) {
+          var nb = adj[c];
+          for (var mm = 0; mm < nb.length && tris < MAXTRI; mm++) {
+            var j = nb[mm]; if (j < c) continue;
+            for (var nn = mm + 1; nn < nb.length && tris < MAXTRI; nn++) {
+              var kk = nb[nn]; if (kk < j) continue;
+              if (!edgeSet.has(j * N + kk)) continue;
+              var A = proj[c], Bp = proj[j], C = proj[kk];
+              if (!A || !Bp || !C) continue;
+              var f = (fade[c] + fade[j] + fade[kk]) / 3;
+              if (f <= 0.03) continue;
+              var pt = path(triP, bin((vz[c] + vz[j] + vz[kk]) / 3), bucket(f));
+              pt.moveTo(A.sx, A.sy); pt.lineTo(Bp.sx, Bp.sy); pt.lineTo(C.sx, C.sy); pt.closePath();
+              tris++;
+            }
+          }
+        }
+
+        /* nodi */
+        for (var v = 0; v < N; v++) {
+          if (!proj[v] || fade[v] <= 0.02) continue;
+          var r = 0.7 + fade[v] * 2.2;
+          var pn = path(nodeP, bin(vz[v]), bucket(fade[v]));
+          pn.moveTo(proj[v].sx + r, proj[v].sy);
+          pn.arc(proj[v].sx, proj[v].sy, r, 0, 6.2832);
+        }
+
+        /* un solo disegno per ogni coppia (strato, livello di opacità) */
+        for (l = 0; l < 3; l++) {
+          var lx = layers[l].ctx;
+          for (bk = 0; bk < NB; bk++) {
+            var a = (bk + 0.5) / NB;
+            if (triP[l][bk]) { lx.fillStyle = "rgba(255,255,255," + (0.075 * a).toFixed(4) + ")"; lx.fill(triP[l][bk]); }
+            if (edgeP[l][bk]) {
+              lx.strokeStyle = "rgba(234,234,234," + (a * 0.62).toFixed(4) + ")";
+              lx.lineWidth = 0.5 + a * 0.8;
+              lx.stroke(edgeP[l][bk]);
+            }
+            if (nodeP[l][bk]) { lx.fillStyle = "rgba(255,255,255," + (0.26 + a * 0.62).toFixed(3) + ")"; lx.fill(nodeP[l][bk]); }
+          }
+        }
+
+        /* composizione: lontano -> a fuoco -> vicino, con sfocatura sugli estremi.
+           È qui, e solo qui, che i piani sovrapposti sono la scelta giusta. */
+        ctx.drawImage(blurred(layers[2], dpr), 0, 0, w, h);
+        ctx.drawImage(layers[1].cv, 0, 0, w, h);
+        ctx.drawImage(blurred(layers[0], dpr), 0, 0, w, h);
+
+        /* sorgente luminosa in alto, come nel riferimento */
+        var g = ctx.createRadialGradient(w * .52, -h * .16, 0, w * .52, -h * .16, h * 1.05);
+        g.addColorStop(0, "rgba(255,255,255,0.18)");
+        g.addColorStop(.45, "rgba(255,255,255,0.04)");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = "source-over";
+      },
+      stats: function () { return "archi " + edges + " · triangoli " + tris; }
+    };
+  }
+};
+
+/* --- 5. Reticolo (3D) --- */
 SKETCHES.lattice = {
   label: "Reticolo",
   dim: "3D",
@@ -457,10 +728,10 @@ SKETCHES.lattice = {
 
 /* ======================= RUNTIME ======================= */
 (function () {
-  var ORDER = ["flow", "split", "plexus", "lattice"];
+  var ORDER = ["flow", "split", "plexus", "inside", "lattice"];
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   var W = 0, H = 0, DPR = 1;
-  var current = "plexus", inst = null, paused = false, frames = 0;
+  var current = "inside", inst = null, paused = false, frames = 0;
   var seedEl = document.getElementById("seed");
   var densEl = document.getElementById("density"), densVal = document.getElementById("density-val");
   var spdEl = document.getElementById("speed"), spdVal = document.getElementById("speed-val");
@@ -481,6 +752,13 @@ SKETCHES.lattice = {
     picker.appendChild(b);
   });
 
+  /* stato degli input della camera, consumato da step() */
+  var input = { lookX: 0, lookY: 0, moveF: 0, moveR: 0, moveU: 0, fov: 1 };
+  var keys = Object.create(null);
+  var camPanel = document.getElementById("cam-panel");
+  var camEl = document.getElementById("cam");
+  var fovField = document.getElementById("fov-field"), fovEl = document.getElementById("fov"), fovVal = document.getElementById("fov-val");
+
   function select(key) {
     current = key;
     Array.prototype.forEach.call(picker.children, function (b) {
@@ -490,6 +768,9 @@ SKETCHES.lattice = {
     document.getElementById("ex-title").textContent = s.title;
     document.getElementById("ex-body").textContent = s.body;
     document.getElementById("ex-code").innerHTML = s.code;
+    camPanel.hidden = !s.hasCam;
+    fovField.hidden = !s.hasCam;
+    cv.style.cursor = s.hasCam ? "grab" : "default";
     build();
   }
 
@@ -502,14 +783,18 @@ SKETCHES.lattice = {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   }
 
+  var keptCam = null;   /* la camera sopravvive a cambio seed, densità e ridimensionamento */
+
   function build() {
     if (!W || !H) resize();
+    if (inst && inst.getCam) { var c = inst.getCam(); keptCam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch }; }
     var seed = parseInt(seedEl.value, 10); if (!isFinite(seed)) seed = 1;
     var density = parseInt(densEl.value, 10) / 100;
     inst = SKETCHES[current].create(mulberry32(seed >>> 0), W, H, density);
+    if (inst.setCam && keptCam) inst.setCam(keptCam);
     frames = 0;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    ctx.fillStyle = "#07090B"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#090909"; ctx.fillRect(0, 0, W, H);
   }
 
   /* controls */
@@ -520,6 +805,73 @@ SKETCHES.lattice = {
   densEl.addEventListener("input", function () { densVal.textContent = densEl.value + "%"; });
   densEl.addEventListener("change", build);
   spdEl.addEventListener("input", function () { spdVal.textContent = (spdEl.value / 100).toFixed(2) + "×"; });
+  fovEl.addEventListener("input", function () {
+    input.fov = fovEl.value / 100; fovVal.textContent = input.fov.toFixed(2);
+  });
+
+  /* --- camera: trascinamento per guardarsi intorno --- */
+  var dragging = false, lastX = 0, lastY = 0;
+  cv.addEventListener("pointerdown", function (e) {
+    if (!SKETCHES[current].hasCam) return;
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    cv.classList.add("dragging"); cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    input.lookX += e.clientX - lastX;
+    input.lookY += e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+  });
+  function endDrag(e) {
+    if (!dragging) return;
+    dragging = false; cv.classList.remove("dragging");
+    if (e && e.pointerId !== undefined && cv.hasPointerCapture(e.pointerId)) cv.releasePointerCapture(e.pointerId);
+  }
+  cv.addEventListener("pointerup", endDrag);
+  cv.addEventListener("pointercancel", endDrag);
+
+  /* --- camera: tastiera per volare --- */
+  cv.tabIndex = 0;
+  function keyTarget(e) {
+    var t = e.target;
+    return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+  }
+  var MOVE = { KeyW: "F+", ArrowUp: "F+", KeyS: "F-", ArrowDown: "F-", KeyA: "R-", ArrowLeft: "R-", KeyD: "R+", ArrowRight: "R+", KeyR: "U+", KeyF: "U-" };
+  window.addEventListener("keydown", function (e) {
+    if (keyTarget(e) || !SKETCHES[current].hasCam || !MOVE[e.code]) return;
+    keys[e.code] = true; e.preventDefault();
+  });
+  window.addEventListener("keyup", function (e) { keys[e.code] = false; });
+  window.addEventListener("blur", function () { keys = Object.create(null); });
+
+  function readKeys() {
+    var f = 0, r = 0, u = 0;
+    for (var code in keys) {
+      if (!keys[code] || !MOVE[code]) continue;
+      var m = MOVE[code], s = m.charAt(1) === "+" ? 1 : -1;
+      if (m.charAt(0) === "F") f += s; else if (m.charAt(0) === "R") r += s; else u += s;
+    }
+    input.moveF = Math.max(-1, Math.min(1, f));
+    input.moveR = Math.max(-1, Math.min(1, r));
+    input.moveU = Math.max(-1, Math.min(1, u));
+  }
+
+  /* --- camera: lettura e scrittura della posizione --- */
+  function fmtCam(c) {
+    return [c.x.toFixed(2), c.y.toFixed(2), c.z.toFixed(2),
+            (c.yaw * 180 / Math.PI).toFixed(1), (c.pitch * 180 / Math.PI).toFixed(1)].join(", ");
+  }
+  camEl.addEventListener("change", function () {
+    if (!inst || !inst.setCam) return;
+    var v = camEl.value.split(",").map(function (s) { return parseFloat(s.trim()); });
+    if (v.length !== 5 || v.some(function (n) { return !isFinite(n); })) {
+      camEl.value = fmtCam(inst.getCam()); return;
+    }
+    inst.setCam({ x: v[0], y: v[1], z: v[2], yaw: v[3] * Math.PI / 180, pitch: v[4] * Math.PI / 180 });
+  });
+  document.getElementById("cam-reset").addEventListener("click", function () {
+    if (inst && inst.setCam) inst.setCam({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
+  });
   document.getElementById("pause").addEventListener("click", function () {
     paused = !paused; this.setAttribute("aria-pressed", String(paused));
     this.textContent = paused ? "Riprendi" : "Pausa";
@@ -577,19 +929,21 @@ SKETCHES.lattice = {
 
     if (inst && !paused) {
       var dt = parseInt(spdEl.value, 10) / 100;
-      if (dt > 0) { inst.step(dt, W, H); frames++; }
+      readKeys();
+      if (dt > 0) { inst.step(dt, W, H, input); frames++; }
+      input.lookX = 0; input.lookY = 0;   /* i delta di sguardo si consumano ogni frame */
 
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       if (SKETCHES[current].clear === "trail") {
-        ctx.fillStyle = "rgba(7,9,11,0.055)"; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "rgba(9,9,9,0.055)"; ctx.fillRect(0, 0, W, H);
       } else {
-        ctx.fillStyle = "#07090B"; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "#090909"; ctx.fillRect(0, 0, W, H);
       }
       inst.draw(ctx, W, H);
 
       if (SKETCHES[current].dim === "3D") {
         var vg = ctx.createRadialGradient(W * .5, H * .45, Math.min(W, H) * .18, W * .5, H * .5, Math.max(W, H) * .78);
-        vg.addColorStop(0, "rgba(7,9,11,0)"); vg.addColorStop(1, "rgba(7,9,11,0.85)");
+        vg.addColorStop(0, "rgba(9,9,9,0)"); vg.addColorStop(1, "rgba(9,9,9,0.55)");
         ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
       }
 
@@ -598,6 +952,7 @@ SKETCHES.lattice = {
         barLeft.textContent = SKETCHES[current].label + " · " + SKETCHES[current].dim + " · " + extra;
         barFrame.textContent = String(frames);
         if (fpsN) { barFps.textContent = (fpsAcc / fpsN).toFixed(0); fpsAcc = 0; fpsN = 0; }
+        if (inst.getCam && document.activeElement !== camEl) camEl.value = fmtCam(inst.getCam());
       }
     }
     requestAnimationFrame(loop);
