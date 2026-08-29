@@ -7,7 +7,7 @@
     --ground:#F2F4F7; --surface:#FFFFFF; --sunk:#E8ECF1;
     --line:#D3DAE3; --line-strong:#B4BFCC;
     --text:#10141A; --text-soft:#414B58; --text-mute:#6B7787;
-    --signal:#235E7D; --signal-soft:#DCEAF2;
+    --signal:#235E7D; --signal-soft:#DCEAF2; --none:#9A4A42;
     --screen:#090909;
     --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
     --f-mono:"Martian Mono",ui-monospace,Menlo,monospace;
@@ -18,7 +18,7 @@
       --ground:#0B0D11; --surface:#13171D; --sunk:#0F1216;
       --line:#232A33; --line-strong:#333C48;
       --text:#E7EBF1; --text-soft:#AEB8C6; --text-mute:#7B8798;
-      --signal:#7FB2CE; --signal-soft:#16242E;
+      --signal:#7FB2CE; --signal-soft:#16242E; --none:#C8827A;
       color-scheme: dark;
     }
   }
@@ -26,7 +26,7 @@
     --ground:#0B0D11; --surface:#13171D; --sunk:#0F1216;
     --line:#232A33; --line-strong:#333C48;
     --text:#E7EBF1; --text-soft:#AEB8C6; --text-mute:#7B8798;
-    --signal:#7FB2CE; --signal-soft:#16242E;
+    --signal:#7FB2CE; --signal-soft:#16242E; --none:#C8827A;
     color-scheme: dark;
   }
 
@@ -87,6 +87,15 @@
     background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
     border-radius:2px; padding:.42rem .5rem;
   }
+  select {
+    width:100%; font-family:var(--f-mono); font-size:.78rem;
+    background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
+    border-radius:2px; padding:.42rem .5rem;
+  }
+  .bar { height:4px; background:var(--sunk); border:1px solid var(--line); border-radius:2px; overflow:hidden; margin-bottom:.45rem; }
+  .bar > i { display:block; height:100%; width:0; background:var(--signal); transition:width .25s linear; }
+  #rec-prog { display:flex; flex-direction:column; }
+  .warn { color:var(--none); }
   .hint { margin:0; font-size:.78rem; line-height:1.5; color:var(--text-mute); }
   .hint b { font-family:var(--f-mono); font-size:.9em; font-weight:400; color:var(--text-soft); }
   #cv { touch-action:none; cursor:grab; }
@@ -172,6 +181,32 @@
         </div>
       </div>
 
+      <div class="panel" id="gen-panel" hidden>
+        <div class="phead"><p class="eyebrow">Generazione</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="link">Soglia connessione <span class="val" id="link-val">0.57</span></label>
+            <input type="range" id="link" min="30" max="82" value="57" step="1">
+          </div>
+          <div class="field">
+            <label for="drift">Deriva nodi <span class="val" id="drift-val">1.00&times;</span></label>
+            <input type="range" id="drift" min="0" max="500" value="100" step="10">
+          </div>
+          <div class="field">
+            <label for="budget">Tetto triangoli <span class="val" id="budget-val">1100</span></label>
+            <input type="range" id="budget" min="0" max="3000" value="1100" step="100">
+          </div>
+          <div class="field">
+            <label>Campo</label>
+            <div class="row">
+              <button class="act" id="field-inf" aria-pressed="true" style="flex:1">Infinito</button>
+              <button class="act" id="field-fin" aria-pressed="false" style="flex:1">Finito</button>
+            </div>
+          </div>
+          <p class="hint">Archi e triangoli non vengono creati: sono ricalcolati ogni frame dalla distanza fra i nodi. Il ritmo con cui nascono e si spengono si legge sotto il canvas, e si regola con <b>deriva</b> e <b>soglia</b>. Con il campo <b>finito</b> puoi allontanarti e guardare la nuvola da fuori.</p>
+        </div>
+      </div>
+
       <div class="panel" id="cam-panel" hidden>
         <div class="phead"><p class="eyebrow">Camera</p></div>
         <div class="pbody">
@@ -180,7 +215,42 @@
             <input type="text" id="cam" spellcheck="false" value="0, 0, 0, 0, 0">
           </div>
           <button class="act" id="cam-reset">Riporta all'origine</button>
-          <p class="hint">Trascina sul canvas per guardarti intorno. <b>W/S</b> o <b>↑/↓</b> per avanzare, <b>A/D</b> per traslare, <b>R/F</b> per salire e scendere. Il campo è infinito: non ne esci mai.</p>
+          <p class="hint">Trascina sul canvas per guardarti intorno. <b>W/S</b> o <b>↑/↓</b> per avanzare, <b>A/D</b> per traslare, <b>R/F</b> per salire e scendere, <b>Shift</b> per andare cinque volte più veloce.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><p class="eyebrow">Video</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="dur">Durata</label>
+            <select id="dur">
+              <option value="30">30 secondi</option>
+              <option value="60" selected>1 minuto</option>
+              <option value="120">2 minuti</option>
+              <option value="300">5 minuti</option>
+              <option value="600">10 minuti</option>
+              <option value="1200">20 minuti</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="res">Risoluzione</label>
+            <select id="res">
+              <option value="1280x720">1280 &times; 720</option>
+              <option value="1920x1080" selected>1920 &times; 1080</option>
+              <option value="2560x1440">2560 &times; 1440</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="rate">Bitrate <span class="val" id="rate-val">6 Mbps</span></label>
+            <input type="range" id="rate" min="1" max="20" value="6" step="1">
+          </div>
+          <p class="hint" id="rec-est">&mdash;</p>
+          <button class="act" id="rec-go">Registra</button>
+          <div id="rec-prog" hidden>
+            <div class="bar"><i id="rec-fill"></i></div>
+            <p class="hint" id="rec-msg"></p>
+          </div>
         </div>
       </div>
     </div>
@@ -428,11 +498,9 @@ SKETCHES.inside = {
   title: "Immersione — la camera è dentro la nuvola",
   body: "Tre differenze rispetto a «Plexus», e sono tutte sulla posizione di chi guarda. Primo: il campo è infinito — i nodi si avvolgono attorno alla camera, così non ne esci mai. Secondo: c'è una camera vera, con posizione e direzione di sguardo, che puoi muovere. Terzo: il disegnato viene diviso in tre strati per distanza e lo strato vicino viene sfocato — è la profondità di campo, ed è l'unico punto in cui i piani sovrapposti servono davvero.",
   code: "<span class='c'>// mondo -&gt; vista: sposta secondo la camera, poi ruota</span>\nvar dx = wrap(p.x - cam.x), dy = wrap(p.y - cam.y), dz = wrap(p.z - cam.z);\nvar x1 = dx * cy - dz * sy,  z1 = dx * sy + dz * cy;   <span class='c'>// imbardata</span>\nvar y2 = dy * cp - z1 * sp,  z2 = dy * sp + z1 * cp;   <span class='c'>// beccheggio</span>\n\n<span class='c'>// wrap(): il campo si ripete, la camera non ne esce mai</span>\nfunction wrap(v) { return v - B * Math.round(v / B); }\n\n<span class='c'>// profondità di campo: tre strati, solo il vicino sfocato</span>\nctx.filter = 'blur(7px)';   ctx.drawImage(vicino, 0, 0, w, h);",
-  create: function (rnd, w, h, density) {
+  create: function (rnd, w, h, density, P) {
     var B = 2.6;                                   // lato della cella che si ripete
-    var LINK = 0.57, LINK2 = LINK * LINK;
     var N = Math.round(470 * density);
-    var MAXTRI = 1100;                             // tetto per proteggere il frame rate
     var NB = 6;                                    // livelli di opacità per il raggruppamento
     var pts = [], i;
     for (i = 0; i < N; i++) pts.push({
@@ -441,11 +509,19 @@ SKETCHES.inside = {
     });
 
     var cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
-    var focal = 1.0, drift = 0.30;
-    var rel = new Float32Array(N * 3);             // posizioni relative alla camera, avvolte
-    var edges = 0, tris = 0;
+    var focal = 1.0, autoDrift = 0.30;
+    var rel = new Float32Array(N * 3);             // posizioni relative alla camera
+    var edges = 0, tris = 0, infinite = true;
 
-    function wrap(v) { return v - B * Math.round(v / B); }
+    /* Ritmo di comparsa e scomparsa: la misura che conta, letta invece che imposta.
+       Confrontando l'insieme degli archi con quello del frame precedente si ottiene
+       quanti ne nascono e quanti se ne spengono ogni secondo. */
+    var prevEdges = new Set(), bornAcc = 0, diedAcc = 0, tRate = 0, rateB = 0, rateD = 0;
+
+    /* Campo infinito: le posizioni si avvolgono attorno alla camera, che non ne esce
+       mai. Campo finito: nessun avvolgimento, quindi allontanandosi si esce e si torna
+       a guardare la nuvola da fuori. */
+    function wrap(v) { return infinite ? v - B * Math.round(v / B) : v; }
 
     /* Tre strati per la profondità di campo.
        Gli strati sfocati sono renderizzati a metà risoluzione: la sfocatura
@@ -483,8 +559,11 @@ SKETCHES.inside = {
       if ("filter" in lay.tctx) lay.tctx.filter = "none";
       return lay.tmp;
     }
-    /* soglie: 0 = vicino (sfocato), 1 = a fuoco, 2 = lontano */
-    function bin(z) { return z < 0.62 ? 0 : (z < 1.55 ? 1 : 2); }
+    /* Soglie fra gli strati: 0 = vicino (sfocato), 1 = a fuoco, 2 = lontano.
+       Nel campo finito si allargano man mano che ti allontani, altrimenti da fuori
+       la nuvola finirebbe tutta nello strato lontano. */
+    var b0 = 0.62, b1 = 1.55;
+    function bin(z) { return z < b0 ? 0 : (z < b1 ? 1 : 2); }
 
     return {
       count: N,
@@ -493,6 +572,7 @@ SKETCHES.inside = {
         cam.x = c.x; cam.y = c.y; cam.z = c.z; cam.yaw = c.yaw; cam.pitch = c.pitch;
       },
       step: function (dt, w, h, input) {
+        infinite = P ? P.infinite : true;
         if (input) {
           cam.yaw += input.lookX * 0.0040;
           cam.pitch += input.lookY * 0.0040;
@@ -507,15 +587,25 @@ SKETCHES.inside = {
         var up = [-sp * sy, cp, -sp * cy];
 
         var mf = input ? input.moveF : 0, mr = input ? input.moveR : 0, mu = input ? input.moveU : 0;
-        if (mf === 0 && mr === 0 && mu === 0) mf = drift;   /* deriva automatica in avanti */
-        var sc = 0.0060 * dt;
+        /* Deriva automatica solo nel campo infinito: in quello finito la camera
+           resta dove la metti, altrimenti verrebbe risucchiata dentro la nuvola. */
+        if (mf === 0 && mr === 0 && mu === 0 && infinite) mf = autoDrift;
+        var sc = 0.011 * dt * (input && input.boost ? 5 : 1);
         cam.x += (fwd[0] * mf + rgt[0] * mr + up[0] * mu) * sc;
         cam.y += (fwd[1] * mf + rgt[1] * mr + up[1] * mu) * sc;
         cam.z += (fwd[2] * mf + rgt[2] * mr + up[2] * mu) * sc;
 
+        /* La deriva dei nodi è ciò che governa il ritmo: più i nodi si muovono,
+           più spesso attraversano la soglia, più archi nascono e si spengono. */
+        var nd = (P ? P.drift : 1) * dt;
         for (var i = 0; i < N; i++) {
           var p = pts[i];
-          p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+          p.x += p.vx * nd; p.y += p.vy * nd; p.z += p.vz * nd;
+          if (!infinite) {   /* campo finito: i nodi restano nel cubo */
+            if (p.x < -B / 2 || p.x > B / 2) p.vx = -p.vx;
+            if (p.y < -B / 2 || p.y > B / 2) p.vy = -p.vy;
+            if (p.z < -B / 2 || p.z > B / 2) p.vz = -p.vz;
+          }
           rel[i * 3] = wrap(p.x - cam.x);
           rel[i * 3 + 1] = wrap(p.y - cam.y);
           rel[i * 3 + 2] = wrap(p.z - cam.z);
@@ -549,6 +639,14 @@ SKETCHES.inside = {
         var k = Math.min(w, h * 1.7) * 0.5;
         var proj = new Array(N), fade = new Array(N), vz = new Float32Array(N);
 
+        /* Nel campo finito la nebbia si allontana insieme alla camera, così la nuvola
+           resta visibile anche guardata da fuori. */
+        var camR = infinite ? 0 : Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z);
+        var fogFar = infinite ? B * 0.62 : Math.max(B * 0.62, camR + B * 0.95);
+        var fogSpan = infinite ? B * 0.42 : Math.max(B * 0.42, fogFar * 0.60);
+        b0 = infinite ? 0.62 : Math.max(0.62, camR * 0.55);
+        b1 = infinite ? 1.55 : Math.max(1.55, camR * 0.98);
+
         for (n = 0; n < N; n++) {
           var dx = rel[n * 3], dy = rel[n * 3 + 1], dz = rel[n * 3 + 2];
           var x1 = dx * cy - dz * sy, z1 = dx * sy + dz * cy;
@@ -558,12 +656,14 @@ SKETCHES.inside = {
           proj[n] = { sx: w * 0.5 + x1 * s * k, sy: h * 0.5 + y2 * s * k };
           vz[n] = z2;
           /* dissolvenza: i lontani svaniscono, i vicinissimi anche (escono dal fuoco) */
-          fade[n] = Math.max(0, Math.min(1, (B * 0.62 - z2) / (B * 0.42)));
+          fade[n] = Math.max(0, Math.min(1, (fogFar - z2) / fogSpan));
         }
 
         /* Vicini per prossimità, tramite hash spaziale sulle posizioni avvolte.
            Chiave intera invece che stringa: le collisioni sono innocue perché
            la distanza viene comunque verificata. */
+        var LINK = P ? P.link : 0.57, LINK2 = LINK * LINK;
+        var MAXTRI = P ? P.maxTri : 1100;
         var cells = new Map();
         var HX = 73856093, HY = 19349663, HZ = 83492791;
         var gi = new Int32Array(N * 3);
@@ -598,6 +698,21 @@ SKETCHES.inside = {
               pe.moveTo(proj[n].sx, proj[n].sy); pe.lineTo(proj[m].sx, proj[m].sy);
             }
           }
+        }
+
+        /* Ritmo: confronto con l'insieme degli archi del frame precedente.
+           Gli indici dei nodi sono stabili, quindi le chiavi sono confrontabili. */
+        var born = 0, died = 0;
+        edgeSet.forEach(function (kk) { if (!prevEdges.has(kk)) born++; });
+        prevEdges.forEach(function (kk) { if (!edgeSet.has(kk)) died++; });
+        prevEdges = edgeSet;
+        bornAcc += born; diedAcc += died;
+        var now = (typeof performance !== "undefined" ? performance.now() : Date.now());
+        if (!tRate) tRate = now;
+        else if (now - tRate > 600) {
+          var secs = (now - tRate) / 1000;
+          rateB = bornAcc / secs; rateD = diedAcc / secs;
+          bornAcc = 0; diedAcc = 0; tRate = now;
         }
 
         /* triangoli: triple mutuamente adiacenti */
@@ -659,7 +774,9 @@ SKETCHES.inside = {
         ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
         ctx.globalCompositeOperation = "source-over";
       },
-      stats: function () { return "archi " + edges + " · triangoli " + tris; }
+      stats: function () {
+        return "archi " + edges + " (+" + rateB.toFixed(0) + " −" + rateD.toFixed(0) + "/s) · triangoli " + tris;
+      }
     };
   }
 };
@@ -753,7 +870,10 @@ SKETCHES.lattice = {
   });
 
   /* stato degli input della camera, consumato da step() */
-  var input = { lookX: 0, lookY: 0, moveF: 0, moveR: 0, moveU: 0, fov: 1 };
+  var input = { lookX: 0, lookY: 0, moveF: 0, moveR: 0, moveU: 0, fov: 1, boost: false };
+  /* parametri di generazione, letti dallo sketch a ogni frame senza ricostruirlo */
+  var params = { link: 0.57, drift: 1, maxTri: 1100, infinite: true };
+  var genPanel = document.getElementById("gen-panel");
   var keys = Object.create(null);
   var camPanel = document.getElementById("cam-panel");
   var camEl = document.getElementById("cam");
@@ -769,6 +889,7 @@ SKETCHES.lattice = {
     document.getElementById("ex-body").textContent = s.body;
     document.getElementById("ex-code").innerHTML = s.code;
     camPanel.hidden = !s.hasCam;
+    genPanel.hidden = !s.hasCam;
     fovField.hidden = !s.hasCam;
     cv.style.cursor = s.hasCam ? "grab" : "default";
     build();
@@ -790,7 +911,7 @@ SKETCHES.lattice = {
     if (inst && inst.getCam) { var c = inst.getCam(); keptCam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch }; }
     var seed = parseInt(seedEl.value, 10); if (!isFinite(seed)) seed = 1;
     var density = parseInt(densEl.value, 10) / 100;
-    inst = SKETCHES[current].create(mulberry32(seed >>> 0), W, H, density);
+    inst = SKETCHES[current].create(mulberry32(seed >>> 0), W, H, density, params);
     if (inst.setCam && keptCam) inst.setCam(keptCam);
     frames = 0;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -808,6 +929,28 @@ SKETCHES.lattice = {
   fovEl.addEventListener("input", function () {
     input.fov = fovEl.value / 100; fovVal.textContent = input.fov.toFixed(2);
   });
+
+  /* --- parametri di generazione: agiscono a caldo, senza ricostruire lo sketch --- */
+  var linkEl = document.getElementById("link"), linkVal = document.getElementById("link-val");
+  var driftEl = document.getElementById("drift"), driftVal = document.getElementById("drift-val");
+  var budEl = document.getElementById("budget"), budVal = document.getElementById("budget-val");
+  linkEl.addEventListener("input", function () {
+    params.link = linkEl.value / 100; linkVal.textContent = params.link.toFixed(2);
+  });
+  driftEl.addEventListener("input", function () {
+    params.drift = driftEl.value / 100; driftVal.textContent = params.drift.toFixed(2) + "×";
+  });
+  budEl.addEventListener("input", function () {
+    params.maxTri = parseInt(budEl.value, 10); budVal.textContent = budEl.value;
+  });
+  var fInf = document.getElementById("field-inf"), fFin = document.getElementById("field-fin");
+  function setField(on) {
+    params.infinite = on;
+    fInf.setAttribute("aria-pressed", String(on));
+    fFin.setAttribute("aria-pressed", String(!on));
+  }
+  fInf.addEventListener("click", function () { setField(true); });
+  fFin.addEventListener("click", function () { setField(false); });
 
   /* --- camera: trascinamento per guardarsi intorno --- */
   var dragging = false, lastX = 0, lastY = 0;
@@ -838,7 +981,9 @@ SKETCHES.lattice = {
   }
   var MOVE = { KeyW: "F+", ArrowUp: "F+", KeyS: "F-", ArrowDown: "F-", KeyA: "R-", ArrowLeft: "R-", KeyD: "R+", ArrowRight: "R+", KeyR: "U+", KeyF: "U-" };
   window.addEventListener("keydown", function (e) {
-    if (keyTarget(e) || !SKETCHES[current].hasCam || !MOVE[e.code]) return;
+    if (keyTarget(e) || !SKETCHES[current].hasCam) return;
+    if (e.code === "ShiftLeft" || e.code === "ShiftRight") { keys[e.code] = true; return; }
+    if (!MOVE[e.code]) return;
     keys[e.code] = true; e.preventDefault();
   });
   window.addEventListener("keyup", function (e) { keys[e.code] = false; });
@@ -851,6 +996,7 @@ SKETCHES.lattice = {
       var m = MOVE[code], s = m.charAt(1) === "+" ? 1 : -1;
       if (m.charAt(0) === "F") f += s; else if (m.charAt(0) === "R") r += s; else u += s;
     }
+    input.boost = !!(keys.ShiftLeft || keys.ShiftRight);
     input.moveF = Math.max(-1, Math.min(1, f));
     input.moveR = Math.max(-1, Math.min(1, r));
     input.moveU = Math.max(-1, Math.min(1, u));
@@ -886,6 +1032,7 @@ SKETCHES.lattice = {
     window.claude.use("downloads").then(function (d) {
       downloads = d; downloadsResolved = true;
       if (!d) saveBtn.hidden = true;
+      refreshEst();   /* il tetto di 16 MB vale solo dentro il visualizzatore */
     }).catch(function () { downloadsResolved = true; });
   } else {
     downloadsResolved = true;
@@ -915,8 +1062,124 @@ SKETCHES.lattice = {
     a.download = name; a.href = cv.toDataURL("image/png"); a.click();
   });
 
+  /* =================== REGISTRAZIONE VIDEO ===================
+     MediaRecorder cattura il canvas in tempo reale: un video di venti minuti
+     richiede venti minuti. È il prezzo di non avere dipendenze; il rendering
+     più veloce del tempo reale richiede WebCodecs e un muxer.               */
+  var durEl = document.getElementById("dur"), resEl = document.getElementById("res");
+  var rateEl = document.getElementById("rate"), rateVal = document.getElementById("rate-val");
+  var estEl = document.getElementById("rec-est"), goEl = document.getElementById("rec-go");
+  var progEl = document.getElementById("rec-prog"), fillEl = document.getElementById("rec-fill"), msgEl = document.getElementById("rec-msg");
+  var VIEWER_CAP = 16 * 1024 * 1024;   /* tetto del visualizzatore Artifact */
+  var rec = null, recTimer = null, recSaved = null;
+
+  function mbps() { return parseInt(rateEl.value, 10); }
+  function seconds() { return parseInt(durEl.value, 10); }
+  function estBytes() { return mbps() * 1e6 / 8 * seconds(); }
+  function human(b) {
+    return b >= 1e9 ? (b / 1073741824).toFixed(2) + " GB" : (b / 1048576).toFixed(0) + " MB";
+  }
+  function pickMime() {
+    var cands = ["video/mp4;codecs=avc1.42E01E", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+    for (var i = 0; i < cands.length; i++) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(cands[i])) return cands[i];
+    }
+    return "";
+  }
+  function refreshEst() {
+    rateVal.textContent = mbps() + " Mbps";
+    var b = estBytes(), s = seconds();
+    var over = b > VIEWER_CAP && !!downloads;
+    estEl.className = "hint" + (over ? " warn" : "");
+    estEl.innerHTML = "&asymp; " + human(b) + " · registrazione in tempo reale, "
+      + (s >= 60 ? Math.round(s / 60) + " min" : s + " s")
+      + (over ? " — oltre il limite di 16 MB del visualizzatore: apri il file in locale, oppure abbassa bitrate o durata." : "");
+  }
+  durEl.addEventListener("change", refreshEst);
+  rateEl.addEventListener("input", refreshEst);
+
+  function finishRecording(blob, mime) {
+    progEl.hidden = true; goEl.textContent = "Registra"; goEl.disabled = false;
+    restoreAfterRecording();
+    var ext = mime.indexOf("mp4") >= 0 ? "mp4" : "webm";
+    var name = current + "-" + seedEl.value + "." + ext;
+    if (downloads) {
+      if (blob.size > VIEWER_CAP) {
+        estEl.className = "hint warn";
+        estEl.textContent = "Registrati " + human(blob.size) + ", oltre il limite di 16 MB del visualizzatore. Il file non può essere consegnato qui: apri prototypes/sketch-bench.html in locale, oppure abbassa bitrate o durata.";
+        return;
+      }
+      downloads.save({ filename: name, data: blob }).then(function () {
+        estEl.className = "hint"; estEl.textContent = "Salvato: " + name + " (" + human(blob.size) + ").";
+      }).catch(function (err) {
+        estEl.className = "hint warn";
+        estEl.textContent = err && err.code === "declined" ? "Salvataggio annullato." : "Salvataggio non riuscito.";
+      });
+      return;
+    }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = name; a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    estEl.className = "hint"; estEl.textContent = "Scaricato: " + name + " (" + human(blob.size) + ").";
+  }
+
+  function restoreAfterRecording() {
+    if (!recSaved) return;
+    cv.style.height = recSaved.h; cv.style.aspectRatio = recSaved.ar;
+    recSaved = null;
+    resize(); build();
+  }
+
+  function stopRecording() {
+    if (recTimer) { clearInterval(recTimer); recTimer = null; }
+    if (rec && rec.state !== "inactive") rec.stop();
+  }
+
+  goEl.addEventListener("click", function () {
+    if (rec && rec.state === "recording") { stopRecording(); return; }
+    var mime = pickMime();
+    if (!mime) { estEl.className = "hint warn"; estEl.textContent = "Questo browser non espone MediaRecorder per il canvas."; return; }
+
+    var wh = resEl.value.split("x");
+    var tw = parseInt(wh[0], 10), th = parseInt(wh[1], 10);
+    /* si registra la risoluzione scelta, non quella a schermo */
+    recSaved = { h: cv.style.height, ar: cv.style.aspectRatio };
+    cv.style.height = "auto"; cv.style.aspectRatio = tw + " / " + th;
+    W = tw; H = th; DPR = 1;
+    cv.width = tw; cv.height = th;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    build();
+
+    var stream = cv.captureStream(30);
+    try {
+      rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: mbps() * 1e6 });
+    } catch (e) {
+      restoreAfterRecording();
+      estEl.className = "hint warn"; estEl.textContent = "Avvio non riuscito: " + e.message;
+      return;
+    }
+    var chunks = [];
+    rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = function () { finishRecording(new Blob(chunks, { type: mime }), mime); };
+    rec.start(1000);
+
+    var total = seconds(), t0 = Date.now();
+    goEl.textContent = "Ferma"; progEl.hidden = false;
+    recTimer = setInterval(function () {
+      var el = (Date.now() - t0) / 1000;
+      fillEl.style.width = Math.min(100, el / total * 100).toFixed(1) + "%";
+      var left = Math.max(0, total - el);
+      msgEl.textContent = Math.floor(el) + " s di " + total + " · mancano "
+        + Math.floor(left / 60) + ":" + ("0" + Math.floor(left % 60)).slice(-2)
+        + " · " + tw + "×" + th;
+      if (el >= total) stopRecording();
+    }, 250);
+  });
+
   var rt = null;
   window.addEventListener("resize", function () {
+    if (rec && rec.state === "recording") return;   /* non toccare il canvas mentre registra */
     clearTimeout(rt); rt = setTimeout(function () { resize(); build(); }, 140);
   });
 
@@ -960,6 +1223,7 @@ SKETCHES.lattice = {
 
   resize();
   select(current);
+  refreshEst();
   requestAnimationFrame(loop);
 })();
 </script>
