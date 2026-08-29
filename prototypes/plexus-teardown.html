@@ -1,0 +1,800 @@
+<title>Plexus Stack Teardown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&display=swap">
+<style>
+  /* ---------- tokens: light is the bare :root ---------- */
+  :root {
+    --ground:        #F2F4F7;
+    --surface:       #FFFFFF;
+    --surface-sunk:  #E8ECF1;
+    --line:          #D3DAE3;
+    --line-strong:   #B4BFCC;
+    --text:          #10141A;
+    --text-soft:     #414B58;
+    --text-mute:     #6B7787;
+    --signal:        #235E7D;
+    --signal-soft:   #DCEAF2;
+    --ok:            #3F7355;
+    --ok-soft:       #DFEDE4;
+    --part:          #8A6520;
+    --part-soft:     #F4E9D3;
+    --none:          #9A4A42;
+    --none-soft:     #F4DFDC;
+    --screen:        #0A0C0F;
+    --shadow:        0 1px 2px rgba(16,20,26,.06), 0 8px 24px -12px rgba(16,20,26,.18);
+
+    --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --f-mono: "Martian Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --pad: clamp(1.15rem, 4vw, 2.5rem);
+    --wide: 1120px;
+    --read: 66ch;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:        #0B0D11;
+      --surface:       #13171D;
+      --surface-sunk:  #0F1216;
+      --line:          #232A33;
+      --line-strong:   #333C48;
+      --text:          #E7EBF1;
+      --text-soft:     #AEB8C6;
+      --text-mute:     #7B8798;
+      --signal:        #7FB2CE;
+      --signal-soft:   #16242E;
+      --ok:            #86AE90;
+      --ok-soft:       #17231B;
+      --part:          #C6A15B;
+      --part-soft:     #241D12;
+      --none:          #C8827A;
+      --none-soft:     #251715;
+      --screen:        #07090B;
+      --shadow:        0 1px 2px rgba(0,0,0,.5), 0 10px 30px -14px rgba(0,0,0,.8);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:        #0B0D11;
+    --surface:       #13171D;
+    --surface-sunk:  #0F1216;
+    --line:          #232A33;
+    --line-strong:   #333C48;
+    --text:          #E7EBF1;
+    --text-soft:     #AEB8C6;
+    --text-mute:     #7B8798;
+    --signal:        #7FB2CE;
+    --signal-soft:   #16242E;
+    --ok:            #86AE90;
+    --ok-soft:       #17231B;
+    --part:          #C6A15B;
+    --part-soft:     #241D12;
+    --none:          #C8827A;
+    --none-soft:     #251715;
+    --screen:        #07090B;
+    --shadow:        0 1px 2px rgba(0,0,0,.5), 0 10px 30px -14px rgba(0,0,0,.8);
+    color-scheme: dark;
+  }
+
+  /* ---------- base ---------- */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--f-display);
+    font-size: 15px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 var(--pad); }
+  .prose { max-width: var(--read); }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -0.02em; }
+  h1 { font-size: clamp(2.1rem, 5.2vw, 3.3rem); font-weight: 700; line-height: 1.04; letter-spacing: -0.035em; }
+  h2 { font-size: clamp(1.35rem, 2.6vw, 1.75rem); font-weight: 700; }
+  h3 { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; }
+  p { margin: 0; }
+  a { color: var(--signal); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; border-radius: 2px; }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+  /* ---------- masthead ---------- */
+  header.top { padding-top: clamp(2.2rem, 6vw, 4rem); }
+  .top-grid { display: flex; flex-direction: column; gap: 1.1rem; }
+  .dek { max-width: 60ch; font-size: 1.06rem; color: var(--text-soft); }
+  .dek strong { color: var(--text); font-weight: 600; }
+
+  /* ---------- screen (live canvas) ---------- */
+  .screen {
+    margin-top: clamp(1.6rem, 4vw, 2.4rem);
+    background: var(--screen);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .screen canvas { display: block; width: 100%; height: clamp(220px, 34vw, 340px); }
+  .screen-bar {
+    display: flex; flex-wrap: wrap; gap: .5rem 1.5rem;
+    justify-content: space-between; align-items: baseline;
+    padding: .6rem .95rem;
+    border-top: 1px solid rgba(255,255,255,.07);
+    background: rgba(255,255,255,.02);
+  }
+  .screen-bar span { font-family: var(--f-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #6E7B8B; }
+  .screen-bar b { color: #A9B6C6; font-weight: 500; }
+
+  /* ---------- sections ---------- */
+  section { padding-top: clamp(3rem, 7vw, 4.75rem); }
+  .sec-head { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1.6rem; }
+  .rule { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+  /* ---------- measured facts ---------- */
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+  .fact { background: var(--surface); padding: .9rem 1rem 1rem; display: flex; flex-direction: column; gap: .25rem; }
+  .fact dt { font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--text-mute); }
+  .fact dd { margin: 0; font-family: var(--f-mono); font-size: 1rem; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+  .fact small { color: var(--text-mute); font-family: var(--f-display); font-size: 11.5px; letter-spacing: 0; }
+
+  /* ---------- requirement list ---------- */
+  .reqs { display: grid; gap: 1px; background: var(--line); border-block: 1px solid var(--line); margin-top: 1.5rem; }
+  .req { background: var(--ground); display: grid; grid-template-columns: 2.2rem 1fr; gap: 0 1rem; padding: .85rem .25rem; align-items: start; }
+  .req-n { font-family: var(--f-mono); font-size: 11px; color: var(--text-mute); padding-top: .2rem; font-variant-numeric: tabular-nums; }
+  .req-b h3 { margin-bottom: .15rem; }
+  .req-b p { color: var(--text-soft); font-size: .92rem; max-width: 62ch; }
+  .req-b code { font-family: var(--f-mono); font-size: .82em; background: var(--surface-sunk); padding: .1em .4em; border-radius: 2px; color: var(--text); }
+
+  /* ---------- matrix ---------- */
+  .matrix-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); }
+  table.matrix { border-collapse: collapse; width: 100%; min-width: 660px; }
+  table.matrix th, table.matrix td { text-align: left; padding: .7rem .85rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.matrix thead th {
+    font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-mute); font-weight: 500; background: var(--surface-sunk); white-space: nowrap;
+  }
+  table.matrix tbody th { font-weight: 500; font-size: .9rem; color: var(--text); }
+  table.matrix tbody tr:last-child th, table.matrix tbody tr:last-child td { border-bottom: 0; }
+  table.matrix td { width: 15%; }
+  .pip {
+    display: inline-flex; align-items: center; gap: .45rem;
+    font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
+    padding: .2rem .5rem .2rem .4rem; border-radius: 2px; white-space: nowrap;
+  }
+  .pip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .pip.ok   { background: var(--ok-soft);   color: var(--ok); }
+  .pip.ok::before   { background: var(--ok); }
+  .pip.part { background: var(--part-soft); color: var(--part); }
+  .pip.part::before { background: var(--part); }
+  .pip.no   { background: var(--none-soft); color: var(--none); }
+  .pip.no::before   { background: var(--none); box-shadow: inset 0 0 0 1px var(--none); background: transparent; }
+  .legend { display: flex; flex-wrap: wrap; gap: .9rem; margin-top: .85rem; font-size: .84rem; color: var(--text-mute); align-items: center; }
+
+  /* ---------- tool cards ---------- */
+  .tools { display: grid; gap: 1.25rem; margin-top: 1.5rem; }
+  .tool { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; box-shadow: var(--shadow); }
+  .tool-head { padding: 1.1rem var(--pad) 1rem; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; justify-content: space-between; }
+  .tool-head .id { display: flex; flex-direction: column; gap: .25rem; }
+  .tool-head h3 { font-size: 1.2rem; }
+  .tool-role { font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; padding: .25rem .55rem; border: 1px solid var(--line-strong); border-radius: 2px; color: var(--text-soft); white-space: nowrap; }
+  .tool-body { padding: 1.15rem var(--pad) 1.4rem; display: grid; gap: 1.25rem; }
+  @media (min-width: 860px) { .tool-body { grid-template-columns: 1fr 1fr; } .tool-plan { grid-column: 1 / -1; } }
+  .blk { display: flex; flex-direction: column; gap: .4rem; }
+  .blk > p { color: var(--text-soft); font-size: .93rem; }
+  .blk ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .35rem; color: var(--text-soft); font-size: .93rem; }
+  .blk li::marker { color: var(--text-mute); }
+  .tool-plan { border-top: 1px solid var(--line); padding-top: 1.15rem; }
+  ol.plan { margin: .3rem 0 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: .7rem; }
+  @media (min-width: 700px) { ol.plan { grid-template-columns: 1fr 1fr; } }
+  ol.plan li { counter-increment: step; display: grid; grid-template-columns: 1.7rem 1fr; gap: .1rem .6rem; font-size: .91rem; color: var(--text-soft); }
+  ol.plan li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--f-mono); font-size: 10px; color: var(--signal);
+    padding-top: .28rem; font-variant-numeric: tabular-nums;
+  }
+  ol.plan b { color: var(--text); font-weight: 600; }
+  code { font-family: var(--f-mono); font-size: .82em; }
+  .blk code, ol.plan code { background: var(--surface-sunk); padding: .1em .38em; border-radius: 2px; }
+
+  /* ---------- pipeline ---------- */
+  .pipe { display: flex; flex-wrap: wrap; gap: .55rem; align-items: stretch; margin-top: 1.4rem; }
+  .stage { flex: 1 1 165px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); padding: .8rem .85rem; display: flex; flex-direction: column; gap: .3rem; }
+  .stage.core { border-color: var(--signal); background: var(--signal-soft); }
+  .stage .eyebrow { font-size: 9.5px; }
+  .stage b { font-size: .95rem; font-weight: 600; letter-spacing: -0.01em; }
+  .stage span { font-size: .84rem; color: var(--text-mute); }
+
+  /* ---------- roadmap ---------- */
+  .phases { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; margin-top: 1.4rem; }
+  .phase { background: var(--surface); padding: 1rem var(--pad) 1.15rem; display: grid; gap: .35rem .9rem; grid-template-columns: 3.2rem 1fr; }
+  .phase .pn { font-family: var(--f-mono); font-size: 10px; letter-spacing: .1em; color: var(--signal); padding-top: .28rem; }
+  .phase p { color: var(--text-soft); font-size: .92rem; max-width: 68ch; }
+  .phase .out { font-family: var(--f-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-mute); margin-top: .2rem; }
+
+  .callout { border-left: 2px solid var(--signal); padding: .1rem 0 .1rem 1rem; margin-top: 1.3rem; color: var(--text-soft); font-size: .95rem; max-width: var(--read); }
+  .callout strong { color: var(--text); font-weight: 600; }
+
+  footer { padding: 3.5rem 0 4rem; margin-top: 3.5rem; border-top: 1px solid var(--line); color: var(--text-mute); font-size: .85rem; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="top-grid">
+      <p class="eyebrow">Analisi tecnica &middot; quattro strumenti open source contro un riferimento</p>
+      <h1>Plexus Stack Teardown</h1>
+      <p class="dek">Il video di riferimento è un <strong>plexus</strong>: nuvola di punti 3D, archi per prossimità, triangoli translucidi, profondità di campo e grading monocromo. Nessuno dei quattro strumenti scelti lo produce — ma tre coprono pezzi reali della pipeline, e il quarto la chiude. Ecco cosa copre ognuno, dove si rompe, e come lo si porta a destinazione.</p>
+    </div>
+
+    <figure class="screen">
+      <canvas id="plexus" aria-label="Ricostruzione live dell'effetto plexus generata da codice"></canvas>
+      <figcaption class="screen-bar">
+        <span>Ricostruzione live &middot; canvas 2D &middot; <b>nessun modello, solo codice</b></span>
+        <span>nodi <b id="stat-n">—</b> &nbsp; archi <b id="stat-e">—</b> &nbsp; triangoli <b id="stat-t">—</b> &nbsp; seed <b>20250829</b></span>
+      </figcaption>
+    </figure>
+  </div>
+</header>
+
+<section id="riferimento">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">01 &middot; Il riferimento, misurato</p>
+      <h2>Cosa c'è davvero dentro quei venti secondi</h2>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>Durata</dt><dd>20.05 s</dd><small>601 frame</small></div>
+      <div class="fact"><dt>Risoluzione</dt><dd>2560 &times; 1440</dd><small>30 fps, h264 High</small></div>
+      <div class="fact"><dt>Saturazione</dt><dd>0.00</dd><small>monocromo esatto, non "quasi"</small></div>
+      <div class="fact"><dt>Luminanza media</dt><dd>36 / 255</dd><small>low-key, base near-black</small></div>
+      <div class="fact"><dt>Picco</dt><dd>241 / 255</dd><small>coda stretta sui nodi</small></div>
+    </dl>
+
+    <div class="prose">
+      <p>La saturazione misurata a zero su ogni frame campionato è il dato che decide l'architettura: non è una scena colorata desaturata in post, è una pipeline che lavora in luminanza dall'inizio. Tutto il resto discende da nove elementi, ognuno con una tecnica precisa dietro.</p>
+    </div>
+
+    <div class="reqs">
+      <div class="req"><div class="req-n">R1</div><div class="req-b"><h3>Nuvola di punti 3D con deriva lenta</h3><p>Poche centinaia di nodi in un volume, moto browniano molto lento o flow field a bassa frequenza. È l'unico pezzo puramente "moto", senza rendering.</p></div></div>
+      <div class="req"><div class="req-n">R2</div><div class="req-b"><h3>Archi per prossimità</h3><p>Segmento fra due nodi quando la distanza 3D scende sotto soglia, con <code>alpha ∝ 1 − d/d<sub>max</sub></code>. A 500+ nodi la ricerca ingenua è O(n²): serve una griglia spaziale.</p></div></div>
+      <div class="req"><div class="req-n">R3</div><div class="req-b"><h3>Triangoli translucidi</h3><p>L'elemento visivamente dominante. Triple di nodi mutuamente vicini riempite in bianco a bassissima opacità, additive. Si derivano dalla lista di adiacenza degli archi, non da una triangolazione di Delaunay.</p></div></div>
+      <div class="req"><div class="req-n">R4</div><div class="req-b"><h3>Camera prospettica in movimento</h3><p>Traslazione e rotazione lentissime. È ciò che dà la sensazione di volume: senza parallasse la stessa geometria legge come un pattern piatto.</p></div></div>
+      <div class="req"><div class="req-n">R5</div><div class="req-b"><h3>Profondità di campo</h3><p>Marcata. L'angolo in basso a sinistra è visibilmente sfocato mentre il piano medio è nitido. Richiede il depth buffer — non è una sfocatura uniforme applicata all'immagine.</p></div></div>
+      <div class="req"><div class="req-n">R6</div><div class="req-b"><h3>Bloom sui nodi e sorgente luminosa</h3><p>Alone attorno ai vertici più luminosi, più un glow diffuso in alto al centro che fa da key light della scena.</p></div></div>
+      <div class="req"><div class="req-n">R7</div><div class="req-b"><h3>Fog per distanza</h3><p>La luminosità cala con la profondità: i nodi lontani sono appena percettibili. Separa i piani e impedisce che la mesh diventi rumore.</p></div></div>
+      <div class="req"><div class="req-n">R8</div><div class="req-b"><h3>Vignettatura e grading in luminanza</h3><p>Angoli scuri, curva low-key, zero croma. Il passaggio finale che unifica tutto.</p></div></div>
+      <div class="req"><div class="req-n">R9</div><div class="req-b"><h3>Export deterministico</h3><p>2560&times;1440 a 30 fps fissi, indipendente dalla velocità di rendering. Un <code>requestAnimationFrame</code> legato al tempo reale non produce questo file.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="matrice">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">02 &middot; Matrice di copertura</p>
+      <h2>Chi copre cosa</h2>
+      <p class="dek" style="font-size:.95rem">Valutazione onesta: nessuna riga fra R1 e R3 è coperta da nessuno dei quattro. È il buco che definisce il progetto.</p>
+    </div>
+
+    <div class="matrix-scroll">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th scope="col">Requisito</th>
+            <th scope="col">Nature of Code</th>
+            <th scope="col">Hydra</th>
+            <th scope="col">CCapture v2</th>
+            <th scope="col">Shader Park</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">R1 &middot; Punti 3D + moto</th>
+            <td><span class="pip part">parziale</span></td><td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip part">parziale</span></td></tr>
+          <tr><th scope="row">R2 &middot; Archi per prossimità</th>
+            <td><span class="pip part">parziale</span></td><td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip no">no</span></td></tr>
+          <tr><th scope="row">R3 &middot; Triangoli translucidi</th>
+            <td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip no">no</span></td></tr>
+          <tr><th scope="row">R4 &middot; Camera prospettica</th>
+            <td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip ok">sì</span></td></tr>
+          <tr><th scope="row">R5 &middot; Profondità di campo</th>
+            <td><span class="pip no">no</span></td><td><span class="pip part">finta</span></td><td><span class="pip no">no</span></td><td><span class="pip part">parziale</span></td></tr>
+          <tr><th scope="row">R6 &middot; Bloom / glow</th>
+            <td><span class="pip no">no</span></td><td><span class="pip part">parziale</span></td><td><span class="pip no">no</span></td><td><span class="pip part">parziale</span></td></tr>
+          <tr><th scope="row">R7 &middot; Fog per distanza</th>
+            <td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip ok">sì</span></td></tr>
+          <tr><th scope="row">R8 &middot; Vignetta + grading</th>
+            <td><span class="pip no">no</span></td><td><span class="pip ok">sì</span></td><td><span class="pip no">no</span></td><td><span class="pip part">parziale</span></td></tr>
+          <tr><th scope="row">R9 &middot; Export deterministico</th>
+            <td><span class="pip no">no</span></td><td><span class="pip no">no</span></td><td><span class="pip ok">sì</span></td><td><span class="pip no">no</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span class="pip ok">sì</span> copre nativamente
+      <span class="pip part">parziale</span> serve lavoro non banale
+      <span class="pip no">no</span> fuori dal modello dello strumento
+    </div>
+  </div>
+</section>
+
+<section id="strumenti">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">03 &middot; I quattro strumenti</p>
+      <h2>Analisi e piano, uno per uno</h2>
+    </div>
+
+    <div class="tools">
+
+      <!-- NOC -->
+      <article class="tool">
+        <div class="tool-head">
+          <div class="id">
+            <p class="eyebrow">nature-of-code</p>
+            <h3>Nature of Code &mdash; gli esempi p5.js</h3>
+          </div>
+          <span class="tool-role">Ruolo: motore di moto</span>
+        </div>
+        <div class="tool-body">
+          <div class="blk">
+            <p class="eyebrow">Stato reale</p>
+            <p><code>noc-examples-p5.js</code> è <strong>archiviato dal 22 settembre 2024</strong> ed è ora in sola lettura. Gli esempi correnti vivono in <code>nature-of-code/noc-book-2</code>, l'edizione 2024 del libro. Partire dal repo che ti avevo citato significa partire da codice congelato.</p>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Cosa copre del riferimento</p>
+            <ul>
+              <li><b>Solo R1, e in parte.</b> Cap. 0 (Perlin noise) e cap. 2 (forze) danno esattamente la deriva lenta dei nodi; cap. 5 (agenti autonomi, flocking) contiene già la logica di ricerca dei vicini che serve a R2.</li>
+              <li>Nient'altro. Non c'è 3D, non c'è post-processing, non c'è export.</li>
+            </ul>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Dove si rompe</p>
+            <ul>
+              <li>È <b>codice didattico, non codice di libreria</b>: sketch monolitici, stato globale, nessun modulo, nessun tipo.</li>
+              <li>Tutto è 2D e legato a <code>p5.Vector</code> e al ciclo <code>draw()</code> di p5.</li>
+              <li>La ricerca dei vicini è O(n²) a forza bruta ovunque: a 600 nodi sono 180.000 confronti per frame.</li>
+              <li><code>random()</code> di p5 non è seedabile in modo portabile: niente riproducibilità, quindi niente re-render identico dello stesso output.</li>
+              <li>Update e draw sono fusi: non puoi avanzare la simulazione a passo fisso mentre renderizzi a un altro frame rate.</li>
+            </ul>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Il miglioramento vero</p>
+            <p>Non forkare il repo. Estrarre gli algoritmi in una libreria di moto <b>headless, 3D e deterministica</b> — che è precisamente ciò che a Nature of Code manca per essere riusabile in un prodotto.</p>
+          </div>
+          <div class="tool-plan">
+            <p class="eyebrow">Piano</p>
+            <ol class="plan">
+              <li><b>Sganciare p5.</b> Sostituire <code>p5.Vector</code> con <code>THREE.Vector3</code> (o un <code>Vec3</code> proprio), togliere ogni riferimento a <code>draw()</code>.</li>
+              <li><b>Rendere deterministico.</b> PRNG seedabile (mulberry32 / sfc32) al posto di <code>random()</code>; ogni sketch prende un <code>seed</code> e produce sempre lo stesso risultato.</li>
+              <li><b>Portare in 3D.</b> Flow field da noise 3D, forze e integrazione su tre assi, volume con condizioni al contorno.</li>
+              <li><b>Indicizzare lo spazio.</b> Hash spaziale a celle di lato <code>d<sub>max</sub></code>: la ricerca dei vicini passa da O(n²) a O(n) ammortizzato, ed è la stessa struttura che serve a R2 e R3.</li>
+              <li><b>Separare update da render.</b> Passo fisso <code>step(dt)</code> con accumulatore, così la simulazione è identica a 60 fps live e a 30 fps in export.</li>
+              <li><b>Uscita a buffer.</b> Emettere direttamente <code>Float32Array</code> di posizioni, pronti per un <code>BufferGeometry</code> senza copie.</li>
+            </ol>
+          </div>
+        </div>
+      </article>
+
+      <!-- HYDRA -->
+      <article class="tool">
+        <div class="tool-head">
+          <div class="id">
+            <p class="eyebrow">hydra-synth/hydra</p>
+            <h3>Hydra &mdash; livecoding di visual</h3>
+          </div>
+          <span class="tool-role">Ruolo: grading, opzionale</span>
+        </div>
+        <div class="tool-body">
+          <div class="blk">
+            <p class="eyebrow">Stato reale</p>
+            <p>WebGL su <code>regl</code>, catena di framebuffer, operazioni per fragment shader a tutto schermo. <strong>Nessun supporto nativo a geometria</strong>: niente vertici, niente linee, niente triangoli. Tutto è matematica su texture.</p>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Cosa copre del riferimento</p>
+            <ul>
+              <li><b>R8, molto bene.</b> Grading, vignetta, curve in luminanza sono esattamente il suo mestiere.</li>
+              <li><b>R6 in parte</b>, via <code>add()</code> e feedback <code>src(o0).scale(1.01)</code> per alone e scie.</li>
+              <li><b>R5 solo finta</b>: può sfocare l'immagine, ma non ha accesso alla profondità, quindi sfoca tutto uniformemente. Non è la DOF del riferimento.</li>
+            </ul>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Dove si rompe</p>
+            <ul>
+              <li><b>Non può generare il plexus.</b> Da <code>osc()</code>, <code>noise()</code> e <code>modulate()</code> escono forme organiche continue, non nodi discreti collegati da segmenti. È una limitazione di modello, non di implementazione.</li>
+              <li>Il tempo viene dal clock reale: il feedback non è riproducibile frame per frame, quindi è incompatibile con l'export deterministico di R9.</li>
+              <li>Nasce come ambiente di livecoding con globali e editor: incorporarlo in una pagina portfolio significa combattere il suo scope globale.</li>
+              <li>La risoluzione di rendering è legata al canvas nel DOM: renderizzare a 2560&times;1440 fuori schermo non è la via principale.</li>
+            </ul>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Il miglioramento vero</p>
+            <p>Usarlo <b>solo come stadio finale di grading</b> su un canvas Three.js dato in input, e renderlo pilotabile dall'esterno invece che dal tempo reale.</p>
+          </div>
+          <div class="tool-plan">
+            <p class="eyebrow">Piano</p>
+            <ol class="plan">
+              <li><b>Clock iniettabile.</b> Esporre un'origine di tempo sostituibile, così <code>time</code> avanza a passi di <code>1/30</code> guidati dal loop di export invece che da <code>performance.now()</code>.</li>
+              <li><b>Sorgente da canvas esterno.</b> Percorso pulito per <code>s0.init({src: canvasThree})</code> con upload della texture garantito a ogni frame steppato.</li>
+              <li><b>Risoluzione disaccoppiata.</b> Rendering offscreen alla risoluzione di export, indipendente dalla dimensione CSS del canvas.</li>
+              <li><b>Build embeddabile.</b> Modulo ES senza editor e senza globali, istanziabile più volte nella stessa pagina.</li>
+              <li><b>Verificare il costo.</b> Se serve solo grading e vignetta, un singolo shader di post nella catena Three.js fa lo stesso lavoro senza aggiungere una dipendenza: tenere Hydra solo se ne usi davvero feedback e modulazione.</li>
+            </ol>
+          </div>
+        </div>
+      </article>
+
+      <!-- CCAPTURE -->
+      <article class="tool">
+        <div class="tool-head">
+          <div class="id">
+            <p class="eyebrow">spite/ccapture.js</p>
+            <h3>CCapture.js &mdash; cattura a frame rate fisso</h3>
+          </div>
+          <span class="tool-role">Ruolo: export</span>
+        </div>
+        <div class="tool-body">
+          <div class="blk">
+            <p class="eyebrow">Stato reale</p>
+            <p>Sorpresa positiva: a <strong>luglio 2026 è uscita la 2.0</strong>, riscrittura da zero con moduli ES, <strong>WebCodecs</strong> e motion blur su GPU. Esporta MP4 (H.264/AV1), WebM (VP9/VP8/AV1), sequenze PNG/JPEG/WebP in TAR e GIF via gifski-wasm. Non è più la libreria ferma che era.</p>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Cosa copre del riferimento</p>
+            <ul>
+              <li><b>R9, per intero.</b> Il clock virtuale intercetta <code>requestAnimationFrame</code>, <code>Date.now</code> e <code>performance.now</code>: ottieni 30 fps esatti a 2560&times;1440 qualunque sia la velocità di rendering, anche 2 secondi per frame.</li>
+              <li>Il motion blur su GPU aggiunge gratis la resa cinematografica del movimento lento.</li>
+              <li>Nient'altro: non disegna niente, per costruzione.</li>
+            </ul>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Dove si rompe</p>
+            <ul>
+              <li><b>Cattura un solo canvas.</b> Se componi Three.js + Hydra su due canvas separati, devi compositare prima di catturare.</li>
+              <li><b>Nessun audio.</b> Il riferimento ha una traccia AAC: la muxing va fatta dopo, fuori dal browser.</li>
+              <li>Il motion blur su GPU richiede WebGL2 con <code>EXT_color_buffer_float</code>; senza, si degrada.</li>
+              <li>Limiti dichiarati: niente animazioni CSS (girano sulla timeline del compositor), niente <code>AnalyserNode</code> realtime, canvas contaminato da risorse cross-origin non codificabile.</li>
+              <li>Vive dentro una sessione browser interattiva: non c'è un percorso da riga di comando per renderizzare venti varianti mentre fai altro.</li>
+            </ul>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Il miglioramento vero</p>
+            <p>Non toccare l'encoder — è già buono. Costruirgli intorno <b>l'automazione headless</b> che gli manca, così il render diventa un comando invece che una sessione manuale.</p>
+          </div>
+          <div class="tool-plan">
+            <p class="eyebrow">Piano</p>
+            <ol class="plan">
+              <li><b>Harness headless.</b> Script Playwright che apre la pagina dello sketch con <code>?seed=&amp;frames=&amp;w=&amp;h=</code>, pilota CCapture e scrive l'MP4 su disco. Rende il render un job ripetibile e mettibile in CI.</li>
+              <li><b>Shim di compositing.</b> Un canvas di cattura su cui disegnare N canvas sorgente nell'ordine giusto a ogni frame, così la cattura resta singola.</li>
+              <li><b>Muxing audio.</b> Passaggio ffmpeg post-cattura che unisce traccia audio e video, con offset dichiarato.</li>
+              <li><b>Manifest di render.</b> Accanto a ogni file, un JSON con seed, parametri, commit e versione: senza questo un output bello non è riproducibile.</li>
+              <li><b>Preset di uscita.</b> Un profilo web leggero (WebM/VP9, loop, poster) e uno di consegna (MP4 2560&times;1440), dallo stesso sketch.</li>
+            </ol>
+          </div>
+        </div>
+      </article>
+
+      <!-- SHADER PARK -->
+      <article class="tool">
+        <div class="tool-head">
+          <div class="id">
+            <p class="eyebrow">shader-park/shader-park-core</p>
+            <h3>Shader Park &mdash; SDF da JavaScript</h3>
+          </div>
+          <span class="tool-role">Ruolo: famiglia di sketch separata</span>
+        </div>
+        <div class="tool-body">
+          <div class="blk">
+            <p class="eyebrow">Stato reale</p>
+            <p>Compila JavaScript in shader di <strong>raymarching su signed distance field</strong>. Espone <code>toThreeJS</code>, <code>toOffline</code> e <code>toRawSDF4Meshing</code>. Nativamente 3D, animato e interattivo.</p>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Cosa copre del riferimento</p>
+            <ul>
+              <li><b>R4 e R7 nativamente</b>: camera e fog sono intrinseci al raymarching, non serve aggiungerli.</li>
+              <li><b>R1 in parte</b>: qualche decina di sfere sì, seicento nodi no.</li>
+              <li><b>R2 e R3 no.</b> Ed è qui il punto.</li>
+            </ul>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Dove si rompe</p>
+            <ul>
+              <li><b>La primitiva è sbagliata per questo effetto.</b> Un plexus sono migliaia di segmenti sottili e triangoli piatti fra coppie arbitrarie di punti. Come SDF ognuno è una capsula o un triangolo da valutare <em>a ogni passo di ogni raggio</em>: il costo è raggi &times; passi &times; primitive. A 2560&times;1440 con 600 nodi è fuori scala di ordini di grandezza, mentre in rasterizzazione le stesse primitive costano una sola volta ciascuna.</li>
+              <li>Nessuna DOF nativa: va comunque aggiunta in post.</li>
+              <li>Se lo affianchi a geometria rasterizzata, i due mondi non condividono il depth buffer e la DOF li tratta in modo incoerente.</li>
+            </ul>
+          </div>
+          <div class="blk">
+            <p class="eyebrow">Il miglioramento vero</p>
+            <p>Smettere di considerarlo un candidato per il plexus e <b>promuoverlo a famiglia di sketch autonoma</b> — frattali SDF, Mandelbulb, Menger, metaball: geometrie visivamente complessissime che in rasterizzazione sarebbero proibitive e in raymarching sono quasi gratis. Copre la metà del tuo obiettivo "generalizzato" che Three.js copre male.</p>
+          </div>
+          <div class="tool-plan">
+            <p class="eyebrow">Piano</p>
+            <ol class="plan">
+              <li><b>Integrare via <code>toThreeJS</code>.</b> Gli sketch SDF diventano materiali dentro la stessa scena Three.js, condividendo camera e catena di post.</li>
+              <li><b>Scrivere <code>gl_FragDepth</code>.</b> Far emettere al raymarcher la profondità reale: è la patch che rende DOF e fog coerenti fra SDF e geometria rasterizzata. È anche il contributo più utile che potresti mandare upstream.</li>
+              <li><b>Adottare la stessa interfaccia sketch.</b> <code>init(ctx, seed)</code> / <code>step(dt)</code> / <code>resize()</code>, così un modulo SDF e uno rasterizzato sono intercambiabili nel sito.</li>
+              <li><b>Uniformare il seed.</b> Passare il seed come uniform e usare un hash noise deterministico dentro lo shader, altrimenti la riproducibilità si rompe proprio negli sketch più spettacolari.</li>
+              <li><b>Budget di passi adattivo.</b> Ridurre i passi di march quando il frame rate scende, per non far crollare la pagina portfolio su GPU integrate.</li>
+            </ol>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<section id="buco">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">04 &middot; Il buco nella matrice</p>
+      <h2>Manca il pezzo che disegna</h2>
+    </div>
+    <div class="prose">
+      <p>R1, R2 e R3 — punti, archi, triangoli — non sono coperti da nessuno dei quattro, e sono il 90% di quello che si vede nel video. Il pezzo mancante è un <strong>rasterizzatore Three.js</strong>: <code>Points</code> per i nodi, <code>LineSegments</code> per gli archi, un <code>BufferGeometry</code> aggiornato per i triangoli, più una catena di post-processing per DOF, bloom e vignetta.</p>
+      <p style="margin-top:.9rem">La ragione è di costo, non di gusto. Con la rasterizzazione ogni segmento e ogni triangolo si paga una volta sola; con il raymarching si paga a ogni passo di ogni raggio. Per una geometria fatta di molte primitive sottili e sparse, la differenza è fra tempo reale e nessuna speranza.</p>
+    </div>
+
+    <div class="pipe">
+      <div class="stage"><span class="eyebrow">Stadio 1</span><b>Moto</b><span>Nature of Code, estratto in libreria 3D deterministica</span></div>
+      <div class="stage core"><span class="eyebrow">Stadio 2</span><b>Geometria e render</b><span>Three.js — il pezzo da costruire</span></div>
+      <div class="stage"><span class="eyebrow">Stadio 2b</span><b>Sketch SDF</b><span>Shader Park, via toThreeJS, stessa camera</span></div>
+      <div class="stage"><span class="eyebrow">Stadio 3</span><b>Post</b><span>DOF, bloom, fog, vignetta — Hydra solo se serve feedback</span></div>
+      <div class="stage"><span class="eyebrow">Stadio 4</span><b>Export</b><span>CCapture v2, WebCodecs, guidato da Playwright</span></div>
+    </div>
+
+    <div class="callout">
+      <strong>Il ruolo dei quattro strumenti cambia dopo questa analisi.</strong> Nature of Code è una fonte di algoritmi da riscrivere, non una dipendenza. Shader Park è una seconda famiglia di sketch, non un concorrente di Three.js. Hydra è opzionale e va giustificato. CCapture è l'unico da adottare così com'è.
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">05 &middot; Roadmap</p>
+      <h2>Quattro fasi, ognuna con un'uscita verificabile</h2>
+    </div>
+
+    <div class="phases">
+      <div class="phase">
+        <div class="pn">F1</div>
+        <div>
+          <h3>Plexus in canvas 2D, seedato</h3>
+          <p>Nodi, archi per prossimità, triangoli, hash spaziale, PRNG seedabile. Nessuna dipendenza. Serve a bloccare la logica di generazione prima di introdurre WebGL — la banda in cima a questa pagina è esattamente questo.</p>
+          <p class="out">Uscita &rarr; sketch funzionante, stesso seed = stesso frame</p>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="pn">F2</div>
+        <div>
+          <h3>Porting in Three.js con post-processing</h3>
+          <p>Volume 3D, camera prospettica in movimento lento, <code>Points</code> + <code>LineSegments</code> + triangoli in <code>BufferGeometry</code>, poi DOF, bloom, fog e vignetta. È la fase in cui il riferimento diventa raggiungibile.</p>
+          <p class="out">Uscita &rarr; parità visiva con il video di riferimento</p>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="pn">F3</div>
+        <div>
+          <h3>Interfaccia sketch e seconda famiglia</h3>
+          <p>Contratto comune <code>init/step/resize/dispose</code>, poi il secondo e terzo sketch — flow field e uno SDF via Shader Park — per verificare che l'astrazione regga davvero su tecniche diverse. Un'interfaccia validata da un solo caso non è un'interfaccia.</p>
+          <p class="out">Uscita &rarr; tre sketch intercambiabili, uno switch nel sito</p>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="pn">F4</div>
+        <div>
+          <h3>Pipeline di export</h3>
+          <p>CCapture v2 collegato al loop a passo fisso, harness Playwright, manifest di render, preset web e consegna. Da qui ogni sketch produce sia il background live del portfolio sia un MP4.</p>
+          <p class="out">Uscita &rarr; <code>npm run render -- --sketch=plexus --seed=42</code></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Analisi condotta su 11 frame campionati del riferimento (20.05 s, 2560&times;1440, 30 fps) con misure di saturazione e luminanza per frame. Stato dei repository verificato ad agosto 2026.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var cvs = document.getElementById('plexus');
+  if (!cvs) return;
+  var ctx = cvs.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  var rnd = mulberry32(20250829);
+
+  var N = 150, LINK = 0.46, pts = [];
+  for (var i = 0; i < N; i++) {
+    pts.push({
+      x: rnd() * 2 - 1, y: rnd() * 2 - 1, z: rnd() * 2 - 1,
+      vx: (rnd() - 0.5) * 0.0022, vy: (rnd() - 0.5) * 0.0022, vz: (rnd() - 0.5) * 0.0022
+    });
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    var r = cvs.getBoundingClientRect();
+    W = Math.max(1, Math.round(r.width));
+    H = Math.max(1, Math.round(r.height));
+    cvs.width = Math.round(W * DPR);
+    cvs.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  var CAM = 2.9, F = 1.15;
+  function project(p, ca, sa) {
+    var x = p.x * ca - p.z * sa;
+    var z = p.x * sa + p.z * ca;
+    var zc = z + CAM;
+    if (zc < 0.35) return null;
+    var s = F / zc, k = Math.min(W, H * 1.7) * 0.46;
+    return { sx: W * 0.5 + x * s * k, sy: H * 0.5 + p.y * s * k, zc: zc, s: s };
+  }
+
+  var statN = document.getElementById('stat-n');
+  var statE = document.getElementById('stat-e');
+  var statT = document.getElementById('stat-t');
+  var lastReport = 0;
+
+  function frame(t) {
+    var ang = t * 0.000045;
+    var ca = Math.cos(ang), sa = Math.sin(ang);
+
+    for (var i = 0; i < N; i++) {
+      var p = pts[i];
+      p.x += p.vx; p.y += p.vy; p.z += p.vz;
+      if (p.x < -1 || p.x > 1) p.vx = -p.vx;
+      if (p.y < -1 || p.y > 1) p.vy = -p.vy;
+      if (p.z < -1 || p.z > 1) p.vz = -p.vz;
+    }
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = '#07090B';
+    ctx.fillRect(0, 0, W, H);
+
+    var proj = new Array(N), fade = new Array(N);
+    for (var i2 = 0; i2 < N; i2++) {
+      var q = project(pts[i2], ca, sa);
+      proj[i2] = q;
+      fade[i2] = q ? Math.max(0, Math.min(1, (4.6 - q.zc) / 2.6)) : 0;
+    }
+
+    var adj = [], edges = 0;
+    for (var a = 0; a < N; a++) adj.push([]);
+    for (var a2 = 0; a2 < N; a2++) {
+      if (!proj[a2]) continue;
+      for (var b = a2 + 1; b < N; b++) {
+        if (!proj[b]) continue;
+        var dx = pts[a2].x - pts[b].x, dy = pts[a2].y - pts[b].y, dz = pts[a2].z - pts[b].z;
+        var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d < LINK) { adj[a2].push(b); adj[b].push(a2); edges++; }
+      }
+    }
+
+    // triangles from mutually linked triples
+    var tris = 0;
+    ctx.globalCompositeOperation = 'lighter';
+    for (var c = 0; c < N; c++) {
+      var nb = adj[c];
+      for (var m = 0; m < nb.length; m++) {
+        var j = nb[m]; if (j < c) continue;
+        for (var n = m + 1; n < nb.length; n++) {
+          var k = nb[n]; if (k < j) continue;
+          if (adj[j].indexOf(k) === -1) continue;
+          var A = proj[c], B = proj[j], C = proj[k];
+          if (!A || !B || !C) continue;
+          var f = (fade[c] + fade[j] + fade[k]) / 3;
+          if (f <= 0.02) continue;
+          ctx.beginPath();
+          ctx.moveTo(A.sx, A.sy); ctx.lineTo(B.sx, B.sy); ctx.lineTo(C.sx, C.sy);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(255,255,255,' + (0.026 * f).toFixed(4) + ')';
+          ctx.fill();
+          tris++;
+        }
+      }
+    }
+
+    // edges
+    for (var e1 = 0; e1 < N; e1++) {
+      if (!proj[e1]) continue;
+      var lst = adj[e1];
+      for (var e2 = 0; e2 < lst.length; e2++) {
+        var o = lst[e2]; if (o < e1) continue;
+        var P = proj[e1], Q = proj[o];
+        if (!Q) continue;
+        var ddx = pts[e1].x - pts[o].x, ddy = pts[e1].y - pts[o].y, ddz = pts[e1].z - pts[o].z;
+        var dd = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+        var al = (1 - dd / LINK) * (fade[e1] + fade[o]) * 0.5;
+        if (al <= 0.01) continue;
+        ctx.strokeStyle = 'rgba(226,233,242,' + (al * 0.34).toFixed(4) + ')';
+        ctx.lineWidth = 0.55 + al * 0.5;
+        ctx.beginPath(); ctx.moveTo(P.sx, P.sy); ctx.lineTo(Q.sx, Q.sy); ctx.stroke();
+      }
+    }
+
+    // nodes
+    for (var v = 0; v < N; v++) {
+      var pr = proj[v]; if (!pr) continue;
+      var fv = fade[v]; if (fv <= 0.02) continue;
+      var r = 0.7 + fv * 1.9;
+      ctx.beginPath();
+      ctx.arc(pr.sx, pr.sy, r, 0, 6.2832);
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.28 + fv * 0.6).toFixed(3) + ')';
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // key light, top-centre
+    var g = ctx.createRadialGradient(W * 0.52, -H * 0.16, 0, W * 0.52, -H * 0.16, H * 1.05);
+    g.addColorStop(0, 'rgba(255,255,255,0.20)');
+    g.addColorStop(0.45, 'rgba(255,255,255,0.045)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // vignette
+    var vg = ctx.createRadialGradient(W * 0.5, H * 0.45, Math.min(W, H) * 0.18, W * 0.5, H * 0.5, Math.max(W, H) * 0.78);
+    vg.addColorStop(0, 'rgba(7,9,11,0)');
+    vg.addColorStop(1, 'rgba(7,9,11,0.88)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+
+    if (t - lastReport > 500) {
+      lastReport = t;
+      if (statN) statN.textContent = String(N);
+      if (statE) statE.textContent = String(edges);
+      if (statT) statT.textContent = String(tris);
+    }
+  }
+
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var raf = null;
+  function loop(t) { frame(t); raf = requestAnimationFrame(loop); }
+
+  resize();
+  if (reduce) {
+    frame(0);
+  } else {
+    raf = requestAnimationFrame(loop);
+  }
+  var rt = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(rt);
+    rt = setTimeout(function () { resize(); if (reduce) frame(0); }, 120);
+  });
+})();
+</script>
