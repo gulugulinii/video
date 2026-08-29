@@ -22,11 +22,19 @@ non serve un server: è un file solo.
 ```
 prototypes/sketch-bench.html    il banco di prova, sei sketch
 prototypes/plexus-teardown.html l'analisi iniziale, con demo live
-docs/plexus-teardown.md         la stessa analisi in testo
-docs/stato.md                   dove siamo, cosa è verificato, cosa manca
+docs/piano.md                   il piano attivo, con lo stato di ogni fase
+docs/decisioni.md               perché il codice è fatto così
+docs/stato.md                   cosa esiste e cosa è verificato
+docs/plexus-teardown.md         l'analisi dei quattro strumenti open source
 reference/                      frame del video di riferimento, con le misure
 tools/                          verifica automatica e misurazione
 ```
+
+**Se riprendi il progetto da fermo**, leggi in quest'ordine:
+[`docs/piano.md`](docs/piano.md) per sapere dove siamo e dove si va, poi
+[`docs/decisioni.md`](docs/decisioni.md) per non rimettere in discussione scelte
+già risolte. Il codice sopravvive da solo; il ragionamento che c'è dietro no,
+ed è per questo che quei due file esistono.
 
 ## I sei sketch
 

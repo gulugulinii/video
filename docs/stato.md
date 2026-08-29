@@ -3,6 +3,8 @@
 Aggiornato: agosto 2026. Tutto quanto segue è nel banco di prova
 `prototypes/sketch-bench.html` e verificato con `tools/verifica.py`.
 
+Dove si va: [`piano.md`](piano.md). Perché è fatto così: [`decisioni.md`](decisioni.md).
+
 ---
 
 ## Cosa c'è
@@ -72,50 +74,10 @@ Nessuno di questi si vedeva guardando le schermate. Sono la ragione per cui
 
 ## Cosa manca
 
-### Prossimo: sfondo per il portfolio
+Il piano attivo, con lo stato di ogni fase e le fasi successive, sta in
+[`piano.md`](piano.md). Le ragioni delle scelte stanno in
+[`decisioni.md`](decisioni.md), comprese quelle delle assenze: le ombre
+proiettate mancano perché servono superfici piene su cui cadere, e la geometria
+attuale è fatta di linee e punti.
 
-Versione ridotta di un solo sketch: niente pannelli, niente codice di controllo,
-che gira dietro al contenuto. Deve essere leggera e spegnersi su
-`prefers-reduced-motion`.
-
-### Poi: video e social
-
-Il registratore c'è ma lavora in tempo reale. Il rendering più veloce del tempo
-reale richiede WebCodecs e un muxer, oppure CCapture v2 pilotato da Playwright
-(vedi `plexus-teardown.md`, fase F4).
-
-Per il caso "flythrough rilassante" serve una camera che segue un percorso
-curvo generato proceduralmente. Non serve collisione: solo un tracciato.
-
-### Alla fine: videogioco
-
-Il parkour ha bisogno di tre cose che oggi non esistono:
-
-- **Superfici solide.** I triangoli attuali sono fantasmi: si vedono ma non
-  esistono fisicamente.
-- **Un controller del giocatore**: gravità, salto, attrito.
-- **Generazione garantita percorribile.** È il pezzo difficile: nodi sparsi a
-  caso non formano mai un percorso raggiungibile. Serve un generatore che
-  costruisca una catena di piattaforme ognuna entro distanza di salto dalla
-  precedente. Il plexus diventa la decorazione attorno.
-
-Vincolo tecnico: per un gioco vero il canvas 2D non basta. Superfici piene,
-illuminazione e collisione a velocità di gioco vogliono WebGL.
-
-### Ombre
-
-Non ci sono, e non per pigrizia: le ombre proiettate hanno bisogno di superfici
-piene su cui cadere. La geometria attuale è fatta di linee e punti, non c'è
-niente che riceva un'ombra. Arrivano naturalmente con la fase WebGL, quando le
-scatole della suddivisione avranno facce piene invece dei soli spigoli. I
-comandi della luce sono già quelli giusti.
-
-## Domande aperte
-
-- Un messaggio si è interrotto a **"Infine,"** — quella richiesta non è mai
-  arrivata.
-- **"Ci sono due test (quella di programmazione e quella pratica)"**: se
-  significa che il banco deve servire sia a verificare che il codice funzioni
-  sia a valutare come viene esteticamente, è quello che si sta facendo — ogni
-  modifica passa da `tools/verifica.py` e da uno sguardo alle schermate. Se
-  significava altro, è da chiarire.
+Questo file resta il censimento di **cosa esiste e cosa è verificato**.
