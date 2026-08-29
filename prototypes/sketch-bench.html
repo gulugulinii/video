@@ -96,6 +96,10 @@
   .bar > i { display:block; height:100%; width:0; background:var(--signal); transition:width .25s linear; }
   #rec-prog { display:flex; flex-direction:column; }
   .warn { color:var(--none); }
+  input[type="color"] {
+    flex:1; min-width:0; height:26px; padding:0; cursor:pointer;
+    border:1px solid var(--line-strong); border-radius:2px; background:var(--ground);
+  }
   .swatches { display:grid; grid-template-columns:repeat(auto-fit,minmax(64px,1fr)); gap:.4rem; }
   .sw {
     appearance:none; border:1px solid var(--line-strong); border-radius:2px; padding:0;
@@ -169,6 +173,15 @@
         <div class="phead"><p class="eyebrow">Palette</p></div>
         <div class="pbody">
           <div class="swatches" id="swatches"></div>
+          <div class="field" style="margin-top:.55rem">
+            <label>Su misura</label>
+            <div class="row">
+              <input type="color" id="c0" value="#6a3a1c" title="lontano">
+              <input type="color" id="c1" value="#d67e30" title="medio">
+              <input type="color" id="c2" value="#ffe3aa" title="vicino">
+              <input type="color" id="cbg" value="#0e0907" title="fondo">
+            </div>
+          </div>
         </div>
       </div>
 
@@ -235,6 +248,35 @@
             <input type="range" id="budget" min="0" max="3000" value="1100" step="100">
           </div>
           <p class="hint">Archi e triangoli non vengono creati: sono ricalcolati ogni frame dalla distanza fra i nodi. Il ritmo con cui nascono e si spengono si legge sotto il canvas.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="seed-panel" hidden>
+        <div class="phead"><p class="eyebrow">Semi</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="seeds">Punti di partenza <span class="val" id="seeds-val">1</span></label>
+            <input type="range" id="seeds" min="1" max="12" value="1" step="1">
+          </div>
+          <p class="hint">Da ogni seme la struttura si propaga di nodo in nodo. Dove due fronti si toccano, gli archi di frontiera <b>si accendono</b> con la cima della rampa di colore.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="light-panel" hidden>
+        <div class="phead"><p class="eyebrow">Luce</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="ldir">Direzione <span class="val" id="ldir-val">90°</span></label>
+            <input type="range" id="ldir" min="0" max="360" value="90" step="5">
+          </div>
+          <div class="field">
+            <label for="lhei">Altezza <span class="val" id="lhei-val">1.16</span></label>
+            <input type="range" id="lhei" min="-80" max="180" value="116" step="4">
+          </div>
+          <div class="field">
+            <label for="lint">Intensità <span class="val" id="lint-val">1.00</span></label>
+            <input type="range" id="lint" min="0" max="250" value="100" step="5">
+          </div>
         </div>
       </div>
 
@@ -427,10 +469,17 @@ function palBg() { return "rgb(" + PAL.bg.join(",") + ")"; }
 
 /* Sorgente luminosa in alto: è ciò che dà alla scena un "sopra" e un "sotto",
    e quindi la sensazione di starci dentro invece di guardarla. */
-function keyLight(ctx, w, h) {
-  var g = ctx.createRadialGradient(w * .52, -h * .16, 0, w * .52, -h * .16, h * 1.05);
-  g.addColorStop(0, "rgba(255,255,255,0.18)");
-  g.addColorStop(.45, "rgba(255,255,255,0.04)");
+function keyLight(ctx, w, h, P) {
+  var dir = P && P.lightDir !== undefined ? P.lightDir : 90;
+  var hei = P && P.lightHei !== undefined ? P.lightHei : 1.16;
+  var itn = P && P.lightInt !== undefined ? P.lightInt : 1;
+  if (itn <= 0) return;
+  var rad = dir * Math.PI / 180;
+  var lx = w * 0.5 + Math.cos(rad) * w * 0.55;
+  var ly = h * 0.5 - hei * h * 0.9;
+  var g = ctx.createRadialGradient(lx, ly, 0, lx, ly, h * 1.15);
+  g.addColorStop(0, "rgba(255,255,255," + (0.20 * itn).toFixed(3) + ")");
+  g.addColorStop(.45, "rgba(255,255,255," + (0.045 * itn).toFixed(3) + ")");
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.globalCompositeOperation = "lighter";
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
@@ -475,10 +524,13 @@ function envelopeAt(wx, wy, wz, R) {
 /* Camera in prima persona con due inquadrature.
    DENTRO: sta nel mezzo e deriva lentamente in avanti.
    FUORI:  sta su un'orbita attorno all'origine e guarda verso il centro. */
-function makeCam3D() {
+function makeCam3D(defR) {
   var cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
   var mode = "inside", focal = 1.0, autoDrift = 0.30;
-  var orbA = 0, orbR = 5.5, orbRT = 5.5, orbH = 0.6, yawOff = 0, pitchOff = 0;
+  /* raggio d'orbita di riposo: va tarato sulla dimensione dello sketch,
+     altrimenti "Fuori" su un oggetto grande resta appiccicato alla superficie */
+  var REST = defR || 5.5;
+  var orbA = 0, orbR = REST, orbRT = REST, orbH = REST * 0.11, yawOff = 0, pitchOff = 0;
   var cy = 1, sy = 0, cp = 1, sp = 0;
 
   return {
@@ -487,7 +539,7 @@ function makeCam3D() {
     set: function (c) {
       if (mode === "outside") {
         var d = Math.sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
-        orbR = orbRT = d < 1.8 ? 5.5 : Math.min(40, d);
+        orbR = orbRT = d < REST * 0.33 ? REST : Math.min(REST * 8, d);
         if (c.x !== 0 || c.z !== 0) orbA = Math.atan2(c.x, c.z);
         orbH = c.y; yawOff = 0; pitchOff = 0;
         return;
@@ -501,7 +553,7 @@ function makeCam3D() {
         if (mode === "outside") {
           var d0 = Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z);
           orbA = (cam.x === 0 && cam.z === 0) ? 0 : Math.atan2(cam.x, cam.z);
-          orbR = Math.max(0.6, d0); orbRT = 5.5; orbH = 0.6; yawOff = 0; pitchOff = 0;
+          orbR = Math.max(0.6, d0); orbRT = REST; orbH = REST * 0.11; yawOff = 0; pitchOff = 0;
         } else { cam.x = 0; cam.y = 0; cam.z = 0; cam.yaw = 0; cam.pitch = 0; }
       }
       var mf = input ? input.moveF : 0, mr = input ? input.moveR : 0, mu = input ? input.moveU : 0;
@@ -514,7 +566,7 @@ function makeCam3D() {
           if (input.fov) focal = input.fov;
         }
         var st = 0.055 * dt * fast;
-        orbRT = Math.max(1.8, Math.min(40, orbRT - mf * st));
+        orbRT = Math.max(REST * 0.3, Math.min(REST * 8, orbRT - mf * st * REST * 0.32));
         orbH += mu * st * 0.5;
         orbA += mr * st * 0.10 + dt * 0.0016;
         orbR += (orbRT - orbR) * 0.045 * dt;
@@ -616,13 +668,18 @@ function makeDof() {
 /* Percorsi raggruppati per (strato, livello di opacità): poche decine di
    stroke() e fill() invece di alcune migliaia. */
 function makeBatch(nb) {
-  var s = { tri: [], edge: [], node: [], nb: nb };
-  for (var l = 0; l < 3; l++) { s.tri.push(new Array(nb)); s.edge.push(new Array(nb)); s.node.push(new Array(nb)); }
+  var s = { tri: [], edge: [], node: [], glow: [], nb: nb };
+  for (var l = 0; l < 3; l++) {
+    s.tri.push(new Array(nb)); s.edge.push(new Array(nb));
+    s.node.push(new Array(nb)); s.glow.push(new Array(nb));
+  }
   s.bucket = function (a) { var b = (a * nb) | 0; return b < 0 ? 0 : (b >= nb ? nb - 1 : b); };
   s.path = function (store, l, b) {
     var p = store[l][b]; if (!p) { p = new Path2D(); store[l][b] = p; } return p;
   };
-  s.flush = function (L, triA, edgeA, nodeA) {
+  /* glowA: archi "accesi", quelli dove due fronti di crescita si incontrano.
+     Prendono sempre la cima della rampa di colore, così si staccano. */
+  s.flush = function (L, triA, edgeA, nodeA, glowA) {
     for (var l = 0; l < 3; l++) {
       var x = L[l].ctx;
       for (var b = 0; b < nb; b++) {
@@ -634,6 +691,10 @@ function makeBatch(nb) {
           x.lineWidth = 0.5 + a * 0.8; x.stroke(s.edge[l][b]);
         }
         if (s.node[l][b]) { x.fillStyle = "rgba(" + col + "," + (nodeA[0] + a * nodeA[1]).toFixed(3) + ")"; x.fill(s.node[l][b]); }
+        if (glowA && s.glow[l][b]) {
+          x.strokeStyle = "rgba(" + palAt(0.99) + "," + (glowA * (0.35 + a * 0.65)).toFixed(4) + ")";
+          x.lineWidth = 0.9 + a * 1.5; x.stroke(s.glow[l][b]);
+        }
       }
     }
   };
@@ -644,10 +705,10 @@ function makeBatch(nb) {
    Costruisce nell'ordine in cui le parti sono nate, tiene la figura completa
    per un momento, poi la smonta: o a ritroso lungo lo stesso percorso — l'ultima
    nata muore per prima — oppure in ordine casuale. Finito, ricomincia. */
-function makeCycle(n, rnd) {
+function makeCycle(n, rnd, customOrder) {
   var alive = new Uint8Array(n);
   var order = new Int32Array(n), kill = new Int32Array(n), i;
-  for (i = 0; i < n; i++) order[i] = i;
+  for (i = 0; i < n; i++) order[i] = customOrder ? customOrder[i] : i;
   var phase = 0, built = 0, razed = 0, held = 0, live = 0;
   function planKill(mode) {
     for (var i = 0; i < n; i++) kill[i] = order[n - 1 - i];      /* a ritroso */
@@ -927,7 +988,7 @@ SKETCHES.inside = {
         S.flush(L, 0.075, 0.62, [0.26, 0.62]);
         D.end(ctx, w, h, dpr);
 
-        keyLight(ctx, w, h);
+        keyLight(ctx, w, h, P);
       },
       stats: function () {
         return "archi " + edges + " (+" + rateB.toFixed(0) + " −" + rateD.toFixed(0) + "/s) · triangoli " + tris;
@@ -1023,7 +1084,7 @@ SKETCHES.flow3d = {
         }
         S.flush(L, 0, 0.52, [0.10, 0.62]);
         D.end(ctx, w, h, dpr);
-        keyLight(ctx, w, h);
+        keyLight(ctx, w, h, P);
       },
       stats: function () { return "particelle " + N + " · scia " + TR + " frame"; }
     };
@@ -1108,7 +1169,7 @@ SKETCHES.split3d = {
         }
         S.flush(L, 0, 0.42, [0, 0]);
         D.end(ctx, w, h, dpr);
-        keyLight(ctx, w, h);
+        keyLight(ctx, w, h, P);
       },
       stats: function () { return "scatole " + cyc.count() + " di " + boxes.length + " · " + cyc.phaseName(); }
     };
@@ -1117,63 +1178,133 @@ SKETCHES.split3d = {
 
 /* --- 6. Reticolo (3D) --- */
 SKETCHES.lattice = {
-  label: "Reticolo", dim: "3D",
-  blurb: "Griglia cubica di punti che ruota su due assi, con dissolvenza in profondità.",
+  label: "Reticolo", dim: "3D", hasCam: true, hasSeeds: true, hasSplit: true, extent0: 50,
+  blurb: "Un cubo che cresce da uno o più semi; dove i fronti si toccano gli archi si accendono.",
   clear: "full",
-  title: "Reticolo — perché serve davvero la profondità",
-  body: "La stessa griglia, ruotata su due assi. Guardala girare: le facce si compenetrano, i punti lontani rimpiccioliscono e sbiadiscono, e la struttura si legge come un solido. Sovrapporre piani 2D fissi non produce mai questo, perché i piani non possono ruotare l'uno rispetto all'altro.",
-  code: "<span class='c'>// rotazione su Y, poi su X, poi proiezione</span>\nvar x1 =  x * cosY + z * sinY;\nvar z1 = -x * sinY + z * cosY;\nvar y2 =  y * cosX - z1 * sinX;\nvar z2 =  y * sinX + z1 * cosX;",
-  create: function (rnd, w, h, density) {
-    var G = Math.max(3, Math.round(6 * Math.cbrt(density))), pts = [], idx = {}, i, j, k;
+  title: "Reticolo — crescita da più semi, e cosa succede dove si incontrano",
+  body: "La struttura non appare tutta insieme: parte da uno o più semi e si propaga di nodo in nodo lungo il reticolo, come una macchia d'inchiostro. Con più semi crescono più cubi contemporaneamente, e quando due fronti si toccano gli archi di frontiera prendono la cima della rampa di colore: sono gli archi dove due crescite diverse si sommano. Alza il numero di semi e guarda dove si formano le giunzioni.",
+  code: "<span class='c'>// visita in ampiezza da più semi insieme</span>\nwhile (coda.length) {\n  var a = coda.shift();\n  for (ogni vicino b di a) if (padrone[b] &lt; 0) {\n    padrone[b] = padrone[a];   <span class='c'>// eredita il seme</span>\n    coda.push(b);\n  }\n}\n<span class='c'>// arco acceso: i due estremi vengono da semi diversi</span>\nvar acceso = padrone[a] !== padrone[b];",
+  create: function (rnd, w, h, density, P) {
+    var B = 5.6, NB = 6;
+    var G = Math.max(3, Math.round(7 * Math.cbrt(density)));
+    var C = makeCam3D(B * 2.2), D = makeDof();
+    var N = G * G * G, t = (G - 1) || 1, i, j, k;
+    var px = new Float32Array(N), py = new Float32Array(N), pz = new Float32Array(N);
+    var wob = new Float32Array(N);
+    function id(a, b, c) { return (c * G + b) * G + a; }
     for (i = 0; i < G; i++) for (j = 0; j < G; j++) for (k = 0; k < G; k++) {
-      var t = (G - 1) || 1;
-      idx[i + "," + j + "," + k] = pts.length;
-      pts.push({ x: (i / t) * 2 - 1, y: (j / t) * 2 - 1, z: (k / t) * 2 - 1, w: 0.65 + rnd() * 0.35 });
+      var n = id(i, j, k);
+      px[n] = ((i / t) - 0.5) * B; py[n] = ((j / t) - 0.5) * B; pz[n] = ((k / t) - 0.5) * B;
+      wob[n] = 0.55 + rnd() * 0.45;
     }
-    var links = [];
+    /* archi del reticolo, e liste di adiacenza per la propagazione */
+    var ea = [], eb = [], adj = new Array(N);
+    for (i = 0; i < N; i++) adj[i] = [];
+    function link(a, b) { ea.push(a); eb.push(b); adj[a].push(b); adj[b].push(a); }
     for (i = 0; i < G; i++) for (j = 0; j < G; j++) for (k = 0; k < G; k++) {
-      var a = idx[i + "," + j + "," + k];
-      if (i + 1 < G) links.push([a, idx[(i + 1) + "," + j + "," + k]]);
-      if (j + 1 < G) links.push([a, idx[i + "," + (j + 1) + "," + k]]);
-      if (k + 1 < G) links.push([a, idx[i + "," + j + "," + (k + 1)]]);
+      var a = id(i, j, k);
+      if (i + 1 < G) link(a, id(i + 1, j, k));
+      if (j + 1 < G) link(a, id(i, j + 1, k));
+      if (k + 1 < G) link(a, id(i, j, k + 1));
     }
-    var t0 = 0;
+    var E = ea.length;
+
+    /* Visita in ampiezza da più semi contemporaneamente. Ogni nodo eredita il
+       seme da cui è stato raggiunto per primo; l'ordine di visita diventa
+       l'ordine in cui la struttura si costruisce. */
+    var seeds = Math.max(1, Math.min(12, P ? P.seeds : 1));
+    var owner = new Int32Array(N), order = new Int32Array(N), head = 0, tail = 0;
+    for (i = 0; i < N; i++) owner[i] = -1;
+    var used = {};
+    for (i = 0; i < seeds; i++) {
+      var pick, guard = 0;
+      do { pick = (rnd() * N) | 0; guard++; } while (used[pick] && guard < 200);
+      used[pick] = 1; owner[pick] = i; order[tail++] = pick;
+    }
+    while (head < tail) {
+      var cur = order[head++], nb = adj[cur];
+      for (i = 0; i < nb.length; i++) {
+        var nx = nb[i];
+        if (owner[nx] >= 0) continue;
+        owner[nx] = owner[cur]; order[tail++] = nx;
+      }
+    }
+    /* nodi irraggiungibili (non capita su un reticolo connesso, ma non si sa mai) */
+    for (i = 0; i < N && tail < N; i++) if (owner[i] < 0) { owner[i] = 0; order[tail++] = i; }
+
+    /* archi di giunzione: i due estremi vengono da semi diversi */
+    var meet = new Uint8Array(E), meetCount = 0;
+    for (i = 0; i < E; i++) {
+      if (owner[ea[i]] !== owner[eb[i]]) { meet[i] = 1; meetCount++; }
+    }
+
+    var cyc = makeCycle(N, rnd, order);
+    var rel = new Float32Array(N * 3), env = new Float32Array(N), tmp = new Float64Array(7);
+    var spin = 0;
+
     return {
-      count: pts.length,
-      step: function (dt) { t0 += dt * 0.0042; },
-      draw: function (ctx, w, h) {
-        var cy = Math.cos(t0), sy = Math.sin(t0);
-        var cx = Math.cos(t0 * 0.63), sx = Math.sin(t0 * 0.63);
-        var proj = new Array(pts.length), fade = new Array(pts.length), n;
-        for (n = 0; n < pts.length; n++) {
-          var p = pts[n];
-          var x1 = p.x * cy + p.z * sy, z1 = -p.x * sy + p.z * cy;
-          var y2 = p.y * cx - z1 * sx, z2 = p.y * sx + z1 * cx;
-          var zc = z2 + 3.2;
-          if (zc < 0.35) { proj[n] = null; fade[n] = 0; continue; }
-          var s = 1.2 / zc, kk = Math.min(w, h * 1.7) * 0.46;
-          proj[n] = { sx: w * 0.5 + x1 * s * kk, sy: h * 0.5 + y2 * s * kk };
-          fade[n] = Math.max(0, Math.min(1, (5.0 - zc) / 3.0));
+      count: N,
+      getCam: function () { return C.get(); },
+      setCam: function (c) { C.set(c); },
+      step: function (dt, w, h, input) {
+        var R = P ? P.extent : EXTENT_INF;
+        C.step(dt, input, P, R);
+        cyc.step(dt * 1.6, P);
+        spin += dt * 0.0009;
+        var cam = C.get(), cs = Math.cos(spin), sn = Math.sin(spin);
+        for (var n = 0; n < N; n++) {
+          /* rotazione lenta del reticolo attorno al proprio asse verticale */
+          var x = px[n] * cs + pz[n] * sn, z = -px[n] * sn + pz[n] * cs;
+          pickCopy(x, py[n], z, cam, B, R, tmp);
+          rel[n * 3] = tmp[0]; rel[n * 3 + 1] = tmp[1]; rel[n * 3 + 2] = tmp[2];
+          env[n] = tmp[3];
         }
-        for (n = 0; n < links.length; n++) {
-          var A = proj[links[n][0]], Bb = proj[links[n][1]];
-          if (!A || !Bb) continue;
-          var f = (fade[links[n][0]] + fade[links[n][1]]) * 0.5;
-          if (f <= 0.02) continue;
-          ctx.strokeStyle = "rgba(" + palAt(f) + "," + (f * f * 0.30).toFixed(4) + ")";
-          ctx.lineWidth = 0.4 + f * 0.7;
-          ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(Bb.sx, Bb.sy); ctx.stroke();
-        }
-        ctx.globalCompositeOperation = "lighter";
-        for (n = 0; n < pts.length; n++) {
-          if (!proj[n] || fade[n] <= 0.02) continue;
-          ctx.beginPath(); ctx.arc(proj[n].sx, proj[n].sy, 0.6 + fade[n] * 2.1 * pts[n].w, 0, 6.2832);
-          ctx.fillStyle = "rgba(" + palAt(fade[n]) + "," + (fade[n] * fade[n] * 0.75).toFixed(3) + ")";
-          ctx.fill();
-        }
-        ctx.globalCompositeOperation = "source-over";
       },
-      stats: function () { return "nodi " + pts.length + " · archi " + links.length; }
+      draw: function (ctx, w, h) {
+        var dpr = ctx.getTransform ? ctx.getTransform().a : 1;
+        var L = D.begin(w, h, dpr), S = makeBatch(NB);
+        C.prepare();
+        var camR = C.dist(), k = Math.min(w, h * 1.7) * 0.5, n;
+        var far = camR + B * 0.70, span = B * 0.80 + camR * 0.25;
+        D.thresholds(Math.max(0.62, camR * 0.55), Math.max(1.55, camR * 0.98));
+
+        var proj = new Array(N), fade = new Float32Array(N), vz = new Float32Array(N);
+        for (n = 0; n < N; n++) {
+          if (!cyc.alive[n] || env[n] <= 0.01) { proj[n] = null; continue; }
+          var q = C.project(rel[n * 3], rel[n * 3 + 1], rel[n * 3 + 2], w, h, k);
+          proj[n] = q;
+          if (!q) continue;
+          vz[n] = q.z;
+          fade[n] = Math.max(0, Math.min(1, (far - q.z) / span)) * env[n];
+        }
+
+        var lit = 0;
+        for (var e = 0; e < E; e++) {
+          var A = proj[ea[e]], Bp = proj[eb[e]];
+          if (!A || !Bp) continue;
+          var f = (fade[ea[e]] + fade[eb[e]]) * 0.5;
+          if (f <= 0.02) continue;
+          var bin = D.binOf((vz[ea[e]] + vz[eb[e]]) * 0.5), bk = S.bucket(f);
+          var store = meet[e] ? S.glow : S.edge;
+          if (meet[e]) lit++;
+          var pth = S.path(store, bin, bk);
+          pth.moveTo(A.sx, A.sy); pth.lineTo(Bp.sx, Bp.sy);
+        }
+        for (n = 0; n < N; n++) {
+          if (!proj[n] || fade[n] <= 0.02) continue;
+          var r = 0.5 + fade[n] * 2.0 * wob[n];
+          var pn = S.path(S.node, D.binOf(vz[n]), S.bucket(fade[n]));
+          pn.moveTo(proj[n].sx + r, proj[n].sy);
+          pn.arc(proj[n].sx, proj[n].sy, r, 0, 6.2832);
+        }
+        S.flush(L, 0, 0.34, [0.10, 0.62], 0.85);
+        D.end(ctx, w, h, dpr);
+        keyLight(ctx, w, h, P);
+      },
+      stats: function () {
+        return "nodi " + cyc.count() + " di " + N + " · semi " + seeds +
+          " · giunzioni " + meetCount + " · " + cyc.phaseName();
+      }
     };
   }
 };
@@ -1208,11 +1339,15 @@ SKETCHES.lattice = {
   var input = { lookX: 0, lookY: 0, moveF: 0, moveR: 0, moveU: 0, fov: 1, boost: false };
   /* parametri di generazione, letti dallo sketch a ogni frame senza ricostruirlo */
   var params = { link: 0.57, drift: 1, maxTri: 1100, mode: "inside",
-                extent: EXTENT_INF, splitMode: "orto", splitDepth: 9, reveal: 1.6, undo: "inverso" };
+                extent: EXTENT_INF, splitMode: "orto", splitDepth: 9, reveal: 1.6, undo: "inverso", seeds: 1,
+                lightDir: 90, lightHei: 1.16, lightInt: 1 };
   var genPanel = document.getElementById("gen-panel");
   var viewPanel = document.getElementById("view-panel");
   var splitPanel = document.getElementById("split-panel");
   var driftField = document.getElementById("drift-field");
+  var extEl = document.getElementById("extent"), extVal = document.getElementById("extent-val");
+  var seedPanel = document.getElementById("seed-panel");
+  var lightPanel = document.getElementById("light-panel");
   var keys = Object.create(null);
   var camPanel = document.getElementById("cam-panel");
   var camEl = document.getElementById("cam");
@@ -1227,11 +1362,20 @@ SKETCHES.lattice = {
     document.getElementById("ex-title").textContent = s.title;
     document.getElementById("ex-body").textContent = s.body;
     document.getElementById("ex-code").innerHTML = s.code;
+    /* Alcuni sketch sono un oggetto solo, non un campo: partono con
+       un'estensione finita, così "Fuori" mostra davvero l'oggetto intero. */
+    var e0 = s.extent0 || 100;
+    if (parseInt(extEl.value, 10) !== e0) {
+      extEl.value = String(e0);
+      extEl.dispatchEvent(new Event("input"));
+    }
     camPanel.hidden = !s.hasCam;
     viewPanel.hidden = !s.hasCam;
     fovField.hidden = !s.hasCam;
     genPanel.hidden = !s.hasGen;
     splitPanel.hidden = !s.hasSplit;
+    seedPanel.hidden = !s.hasSeeds;
+    lightPanel.hidden = !s.hasCam;
     driftField.hidden = !s.hasDrift;
     cv.style.cursor = s.hasCam ? "grab" : "default";
     build();
@@ -1284,7 +1428,6 @@ SKETCHES.lattice = {
   });
 
   /* Estensione del campo: continua, quindi si può muovere mentre voli. */
-  var extEl = document.getElementById("extent"), extVal = document.getElementById("extent-val");
   extEl.addEventListener("input", function () {
     var v = parseInt(extEl.value, 10);
     params.extent = v >= 100 ? EXTENT_INF : v / 10;
@@ -1339,6 +1482,37 @@ SKETCHES.lattice = {
     swWrap.appendChild(b);
   });
   if (screenFig) screenFig.style.background = palBg();
+
+  /* Semi: cambiano la struttura della crescita, quindi ricostruiscono. */
+  var seedsEl = document.getElementById("seeds"), seedsVal = document.getElementById("seeds-val");
+  seedsEl.addEventListener("input", function () { seedsVal.textContent = seedsEl.value; });
+  seedsEl.addEventListener("change", function () { params.seeds = parseInt(seedsEl.value, 10); build(); });
+
+  /* Luce: solo resa, quindi agisce a caldo. */
+  function lightCtl(id, valId, apply) {
+    var el = document.getElementById(id), out = document.getElementById(valId);
+    el.addEventListener("input", function () { out.textContent = apply(parseInt(el.value, 10)); });
+  }
+  lightCtl("ldir", "ldir-val", function (v) { params.lightDir = v; return v + "°"; });
+  lightCtl("lhei", "lhei-val", function (v) { params.lightHei = v / 100; return (v / 100).toFixed(2); });
+  lightCtl("lint", "lint-val", function (v) { params.lightInt = v / 100; return (v / 100).toFixed(2); });
+
+  /* Palette su misura: tre fermate più il fondo, applicate mentre provi. */
+  function hexRGB(h) {
+    return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  }
+  PALETTES.custom = { label: "Su misura", bg: [14, 9, 7], stops: [[106, 58, 28], [214, 126, 48], [255, 227, 170]] };
+  function applyCustom() {
+    var ids = ["c0", "c1", "c2"];
+    PALETTES.custom.stops = ids.map(function (i) { return hexRGB(document.getElementById(i).value); });
+    PALETTES.custom.bg = hexRGB(document.getElementById("cbg").value);
+    PAL = PALETTES.custom;
+    Array.prototype.forEach.call(swWrap.children, function (o) { o.setAttribute("aria-pressed", "false"); });
+    if (screenFig) screenFig.style.background = palBg();
+  }
+  ["c0", "c1", "c2", "cbg"].forEach(function (i) {
+    document.getElementById(i).addEventListener("input", applyCustom);
+  });
 
   cuts.orto.addEventListener("click", function () { setCut("orto"); });
   cuts.diag.addEventListener("click", function () { setCut("diag"); });
