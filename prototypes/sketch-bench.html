@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Sketch Bench</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -382,7 +383,22 @@
 </div>
 
 <script>
+/* ==========================================================================
+   FILE GENERATO — non modificare a mano.
+
+   La fonte sono i moduli in src/. Per cambiare qualcosa modifica quelli e
+   rigenera con:  python3 tools/costruisci.py
+
+   Questo file esiste perche il browser non carica moduli ES da file://, e il
+   banco deve restare apribile con un doppio clic.
+   ========================================================================== */
+
 "use strict";
+
+
+/* ===== src/engine/rng.js ===== */
+/* Generatore pseudo-casuale seedabile.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
 
 /* ---------- generatore pseudo-casuale seedabile ---------- */
 function mulberry32(a) {
@@ -393,6 +409,12 @@ function mulberry32(a) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
+
+/* ---------- rumore di valore 2D, tabella seedata ---------- */
+
+/* ===== src/engine/noise.js ===== */
+/* Rumore di valore, 2D e 3D, su tabella seedata.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
 
 /* ---------- rumore di valore 2D, tabella seedata ---------- */
 function makeNoise(rnd) {
@@ -408,24 +430,6 @@ function makeNoise(rnd) {
     return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
   };
 }
-
-/* =======================================================================
-   PROIEZIONE 3D -> 2D
-   L'unica differenza fra uno sketch 2D e uno 3D in questo file.
-   Un punto (x,y,z) diventa un punto schermo dividendo per la profondità.
-   ======================================================================= */
-function project(x, y, z, w, h, camDist, focal) {
-  var zc = z + camDist;                  // profondità rispetto alla camera
-  if (zc < 0.3) return null;             // dietro la camera: scartato
-  var s = focal / zc;                    // <-- la divisione: tutto il 3D è qui
-  var k = Math.min(w, h * 1.7) * 0.46;   // scala in pixel
-  return { sx: w * 0.5 + x * s * k, sy: h * 0.5 + y * s * k, zc: zc, s: s };
-}
-
-/* ======================= SKETCH ======================= */
-var SKETCHES = {};
-
-/* ---------------- attrezzi condivisi ---------------- */
 
 /* Rumore di valore 3D su tabella seedata. Stessa idea della versione 2D:
    una griglia di valori casuali, interpolata dolcemente. */
@@ -451,6 +455,15 @@ function makeNoise3(rnd) {
    grandezza che struttura già l'immagine, cioè la profondità. Ogni livello di
    opacità pesca un colore lungo la rampa, quindi il vicino e il lontano restano
    distinguibili come nel monocromo — cambia solo la tinta. */
+
+/* ===== src/engine/palette.js ===== */
+/* Palette e sorgente luminosa.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+/* Palette. Il colore non viene appiccicato sopra: viene mappato sulla stessa
+   grandezza che struttura già l'immagine, cioè la profondità. Ogni livello di
+   opacità pesca un colore lungo la rampa, quindi il vicino e il lontano restano
+   distinguibili come nel monocromo — cambia solo la tinta. */
 var PALETTES = {
   mono:     { label: "Monocromo", bg: [9, 9, 9],    stops: [[104, 104, 104], [198, 201, 206], [255, 255, 255]] },
   brace:    { label: "Brace",     bg: [14, 9, 7],   stops: [[116, 50, 26], [214, 126, 48], [255, 227, 170]] },
@@ -459,6 +472,13 @@ var PALETTES = {
   sabbia:   { label: "Sabbia",    bg: [13, 11, 8],  stops: [[108, 86, 56], [190, 162, 112], [249, 239, 216]] }
 };
 var PAL = PALETTES.mono;
+
+/* PAL era una variabile globale che il runtime riassegnava. Con i moduli le
+   importazioni sono in sola lettura, quindi la palette attiva resta privata al
+   modulo e si cambia da qui. Meglio della globale: nessuno la puo riassegnare
+   per sbaglio. */
+function setPalette(p) { PAL = (typeof p === "string" ? PALETTES[p] : p) || PALETTES.mono; }
+function getPalette() { return PAL; }
 function palAt(t) {
   var st = PAL.stops, n = st.length - 1;
   var x = Math.max(0, Math.min(0.9999, t)) * n, i = x | 0, f = x - i;
@@ -485,6 +505,17 @@ function keyLight(ctx, w, h, P) {
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = "source-over";
 }
+
+/* Estensione del campo, l'unica cosa che separa "finito" da "infinito".
+   Le posizioni si avvolgono sempre, quindi il mondo è sempre fatto di copie;
+   ciò che cambia è quante ne restano accese. Un inviluppo morbido attorno
+   all'origine spegne le copie oltre il raggio R: con R piccolo resta una sola
+   nuvola, con R grande se ne accendono infinite. Poiché è una dissolvenza e non
+   un interruttore, R si può muovere mentre voli senza nessuno scatto. */
+
+/* ===== src/engine/field.js ===== */
+/* Estensione del campo: quante copie del cubo restano accese.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
 
 /* Estensione del campo, l'unica cosa che separa "finito" da "infinito".
    Le posizioni si avvolgono sempre, quindi il mondo è sempre fatto di copie;
@@ -520,6 +551,14 @@ function envelopeAt(wx, wy, wz, R) {
   var soft = Math.max(1.0, R * 0.35);
   return Math.max(0, Math.min(1, (R + soft - d) / soft));
 }
+
+/* Camera in prima persona con due inquadrature.
+   DENTRO: sta nel mezzo e deriva lentamente in avanti.
+   FUORI:  sta su un'orbita attorno all'origine e guarda verso il centro. */
+
+/* ===== src/engine/cam3d.js ===== */
+/* Camera in prima persona, dentro o in orbita fuori.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
 
 /* Camera in prima persona con due inquadrature.
    DENTRO: sta nel mezzo e deriva lentamente in avanti.
@@ -615,6 +654,14 @@ function makeCam3D(defR) {
 /* Profondità di campo a tre strati. Gli strati sfocati sono renderizzati a metà
    risoluzione e sfocati nella LORO risoluzione: costa un quarto dei pixel e il
    risultato è indistinguibile. È l'unico posto dove i piani sovrapposti servono. */
+
+/* ===== src/engine/dof.js ===== */
+/* Profondita di campo a tre strati.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+/* Profondità di campo a tre strati. Gli strati sfocati sono renderizzati a metà
+   risoluzione e sfocati nella LORO risoluzione: costa un quarto dei pixel e il
+   risultato è indistinguibile. È l'unico posto dove i piani sovrapposti servono. */
 function makeDof() {
   var SC = [0.5, 1, 0.5], BL = [7, 0, 1.4];
   var L = null, lw = 0, lh = 0, ld = 0;
@@ -667,6 +714,14 @@ function makeDof() {
 
 /* Percorsi raggruppati per (strato, livello di opacità): poche decine di
    stroke() e fill() invece di alcune migliaia. */
+
+/* ===== src/engine/batch.js ===== */
+/* Percorsi raggruppati per strato e livello di opacita.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+
+/* Percorsi raggruppati per (strato, livello di opacità): poche decine di
+   stroke() e fill() invece di alcune migliaia. */
 function makeBatch(nb) {
   var s = { tri: [], edge: [], node: [], glow: [], nb: nb };
   for (var l = 0; l < 3; l++) {
@@ -700,6 +755,15 @@ function makeBatch(nb) {
   };
   return s;
 }
+
+/* Ciclo di vita di una struttura che si costruisce e si smonta.
+   Costruisce nell'ordine in cui le parti sono nate, tiene la figura completa
+   per un momento, poi la smonta: o a ritroso lungo lo stesso percorso — l'ultima
+   nata muore per prima — oppure in ordine casuale. Finito, ricomincia. */
+
+/* ===== src/engine/cycle.js ===== */
+/* Ciclo di costruzione e smontaggio.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
 
 /* Ciclo di vita di una struttura che si costruisce e si smonta.
    Costruisce nell'ordine in cui le parti sono nate, tiene la figura completa
@@ -744,6 +808,13 @@ function makeCycle(n, rnd, customOrder) {
 
 /* Taglio di un poligono convesso con una retta. Un'unica funzione copre sia i
    tagli ortogonali sia quelli diagonali: cambia solo la direzione della retta. */
+
+/* ===== src/engine/poly.js ===== */
+/* Taglio di poligoni convessi.
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+/* Taglio di un poligono convesso con una retta. Un'unica funzione copre sia i
+   tagli ortogonali sia quelli diagonali: cambia solo la direzione della retta. */
 function cutPoly(poly, px, py, nx, ny) {
   var A = [], B = [], i, n = poly.length;
   function side(p) { return (p[0] - px) * nx + (p[1] - py) * ny; }
@@ -766,7 +837,15 @@ function polyArea(p) {
 }
 
 /* --- 1. Flow field (2D) --- */
-SKETCHES.flow = {
+
+/* ===== src/sketches/flow.js ===== */
+/* Flow field (2D)
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+
+
+/* --- 1. Flow field (2D) --- */
+const sketch_flow = {
   label: "Flow field", dim: "2D",
   blurb: "Particelle che seguono un campo di direzioni ricavato dal rumore.",
   clear: "trail",
@@ -797,9 +876,17 @@ SKETCHES.flow = {
     };
   }
 };
+/* --- 2. Suddivisione ricorsiva (2D) --- */
+
+/* ===== src/sketches/split.js ===== */
+/* Suddivisione ricorsiva (2D)
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+
+
 
 /* --- 2. Suddivisione ricorsiva (2D) --- */
-SKETCHES.split = {
+const sketch_split = {
   label: "Suddivisione", dim: "2D", hasSplit: true,
   blurb: "Un rettangolo tagliato ricorsivamente, in ortogonale o in diagonale.",
   clear: "full",
@@ -857,9 +944,19 @@ SKETCHES.split = {
     };
   }
 };
+/* --- 3. Immersione: nuvola di nodi con camera (3D) --- */
+
+/* ===== src/sketches/inside.js ===== */
+/* Immersione (3D)
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+
+
+
+
 
 /* --- 3. Immersione: nuvola di nodi con camera (3D) --- */
-SKETCHES.inside = {
+const sketch_inside = {
   label: "Immersione", dim: "3D", hasCam: true, hasGen: true, hasDrift: true,
   blurb: "Nodi collegati per prossimità, con la camera dentro o in orbita fuori.",
   clear: "full",
@@ -996,9 +1093,20 @@ SKETCHES.inside = {
     };
   }
 };
+/* --- 4. Flow field 3D --- */
+
+/* ===== src/sketches/flow3d.js ===== */
+/* Flow field 3D
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+
+
+
+
+
 
 /* --- 4. Flow field 3D --- */
-SKETCHES.flow3d = {
+const sketch_flow3d = {
   label: "Flow field 3D", dim: "3D", hasCam: true, hasDrift: true,
   blurb: "Lo stesso campo di direzioni, ma nello spazio, attraversato dalla camera.",
   clear: "full",
@@ -1090,9 +1198,20 @@ SKETCHES.flow3d = {
     };
   }
 };
+/* --- 5. Suddivisione 3D --- */
+
+/* ===== src/sketches/split3d.js ===== */
+/* Suddivisione 3D
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+
+
+
+
+
 
 /* --- 5. Suddivisione 3D --- */
-SKETCHES.split3d = {
+const sketch_split3d = {
   label: "Suddivisione 3D", dim: "3D", hasCam: true, hasSplit: true,
   blurb: "Un cubo tagliato ricorsivamente in scatole, attraversate dalla camera.",
   clear: "full",
@@ -1175,9 +1294,20 @@ SKETCHES.split3d = {
     };
   }
 };
+/* --- 6. Reticolo (3D) --- */
+
+/* ===== src/sketches/lattice.js ===== */
+/* Reticolo (3D)
+   Estratto da prototypes/sketch-bench.html. Fonte unica: modificare qui. */
+
+
+
+
+
+
 
 /* --- 6. Reticolo (3D) --- */
-SKETCHES.lattice = {
+const sketch_lattice = {
   label: "Reticolo", dim: "3D", hasCam: true, hasSeeds: true, hasSplit: true, extent0: 50,
   blurb: "Un cubo che cresce da uno o più semi; dove i fronti si toccano gli archi si accendono.",
   clear: "full",
@@ -1309,9 +1439,29 @@ SKETCHES.lattice = {
   }
 };
 
-/* ======================= RUNTIME ======================= */
+/* ===== src/sketches/index.js ===== */
+var SKETCHES = {
+  flow: sketch_flow,
+  split: sketch_split,
+  inside: sketch_inside,
+  flow3d: sketch_flow3d,
+  split3d: sketch_split3d,
+  lattice: sketch_lattice
+};
+var ORDINE = ["flow", "split", "inside", "flow3d", "split3d", "lattice"];
+
+/* ===== src/bench/runtime.js ===== */
+/* Runtime del banco di prova.
+   Tutta l'interfaccia: scelta dello sketch, cursori, camera, palette,
+   registrazione video. Il sito non usa niente di questo file: usa
+   src/background.js. Fonte unica: modificare qui. */
+
+
+
+
+
 (function () {
-  var ORDER = ["flow", "split", "inside", "flow3d", "split3d", "lattice"];
+  var ORDER = ORDINE;
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   var W = 0, H = 0, DPR = 1;
   var current = "inside", inst = null, paused = false, frames = 0;
@@ -1464,7 +1614,7 @@ SKETCHES.lattice = {
     var pl = PALETTES[key];
     var b = document.createElement("button");
     b.className = "sw"; b.type = "button"; b.dataset.pal = key;
-    b.setAttribute("aria-pressed", String(PAL === pl));
+    b.setAttribute("aria-pressed", String(getPalette() === pl));
     b.title = pl.label;
     var grad = pl.stops.map(function (c, i) {
       return "rgb(" + c.join(",") + ") " + Math.round(i / (pl.stops.length - 1) * 100) + "%";
@@ -1473,7 +1623,7 @@ SKETCHES.lattice = {
     b.querySelector("i").style.background = "linear-gradient(90deg," + grad + ")";
     b.querySelector("span").textContent = pl.label;
     b.addEventListener("click", function () {
-      PAL = pl;
+      setPalette(pl);
       Array.prototype.forEach.call(swWrap.children, function (o) {
         o.setAttribute("aria-pressed", String(o.dataset.pal === key));
       });
@@ -1506,7 +1656,7 @@ SKETCHES.lattice = {
     var ids = ["c0", "c1", "c2"];
     PALETTES.custom.stops = ids.map(function (i) { return hexRGB(document.getElementById(i).value); });
     PALETTES.custom.bg = hexRGB(document.getElementById("cbg").value);
-    PAL = PALETTES.custom;
+    setPalette(PALETTES.custom);
     Array.prototype.forEach.call(swWrap.children, function (o) { o.setAttribute("aria-pressed", "false"); });
     if (screenFig) screenFig.style.background = palBg();
   }
@@ -1790,7 +1940,7 @@ SKETCHES.lattice = {
 
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       if (SKETCHES[current].clear === "trail") {
-        ctx.fillStyle = "rgba(" + PAL.bg.join(",") + ",0.055)"; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "rgba(" + getPalette().bg.join(",") + ",0.055)"; ctx.fillRect(0, 0, W, H);
       } else {
         ctx.fillStyle = palBg(); ctx.fillRect(0, 0, W, H);
       }
@@ -1798,7 +1948,7 @@ SKETCHES.lattice = {
 
       if (SKETCHES[current].dim === "3D") {
         var vg = ctx.createRadialGradient(W * .5, H * .45, Math.min(W, H) * .18, W * .5, H * .5, Math.max(W, H) * .78);
-        var bgs = PAL.bg.join(",");
+        var bgs = getPalette().bg.join(",");
         vg.addColorStop(0, "rgba(" + bgs + ",0)"); vg.addColorStop(1, "rgba(" + bgs + ",0.55)");
         ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
       }
@@ -1819,4 +1969,5 @@ SKETCHES.lattice = {
   refreshEst();
   requestAnimationFrame(loop);
 })();
+
 </script>

@@ -9,6 +9,12 @@ Dove si va: [`piano.md`](piano.md). Perché è fatto così: [`decisioni.md`](dec
 
 ## Cosa c'è
 
+### Struttura
+
+`src/engine/` e `src/sketches/` sono la fonte unica; `prototypes/sketch-bench.html`
+è generato da `tools/costruisci.py` per restare apribile con un doppio clic.
+`tools/verifica.py` prova entrambi e fallisce se il generato è vecchio.
+
 ### Sketch
 
 | Sketch | Dim | Camera | Ciclo | Note |

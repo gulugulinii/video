@@ -1,0 +1,387 @@
+<meta charset="utf-8">
+<title>Sketch Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Martian+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground:#F2F4F7; --surface:#FFFFFF; --sunk:#E8ECF1;
+    --line:#D3DAE3; --line-strong:#B4BFCC;
+    --text:#10141A; --text-soft:#414B58; --text-mute:#6B7787;
+    --signal:#235E7D; --signal-soft:#DCEAF2; --none:#9A4A42;
+    --screen:#090909;
+    --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+    --f-mono:"Martian Mono",ui-monospace,Menlo,monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#0B0D11; --surface:#13171D; --sunk:#0F1216;
+      --line:#232A33; --line-strong:#333C48;
+      --text:#E7EBF1; --text-soft:#AEB8C6; --text-mute:#7B8798;
+      --signal:#7FB2CE; --signal-soft:#16242E; --none:#C8827A;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0B0D11; --surface:#13171D; --sunk:#0F1216;
+    --line:#232A33; --line-strong:#333C48;
+    --text:#E7EBF1; --text-soft:#AEB8C6; --text-mute:#7B8798;
+    --signal:#7FB2CE; --signal-soft:#16242E; --none:#C8827A;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--ground); color:var(--text);
+    font-family:var(--f-display); font-size:15px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .shell { max-width:1180px; margin:0 auto; padding:clamp(1.1rem,3.5vw,2.4rem); display:flex; flex-direction:column; gap:1.4rem; }
+
+  .masthead { display:flex; flex-wrap:wrap; gap:.6rem 1.5rem; align-items:baseline; justify-content:space-between; }
+  h1 { margin:0; font-size:clamp(1.5rem,3.4vw,2.1rem); font-weight:700; letter-spacing:-0.032em; }
+  .eyebrow { font-family:var(--f-mono); font-size:10px; letter-spacing:.15em; text-transform:uppercase; color:var(--text-mute); margin:0; }
+  .masthead p.sub { margin:0; color:var(--text-soft); font-size:.93rem; max-width:46ch; }
+
+  /* layout */
+  .bench { display:grid; gap:1rem; }
+  @media (min-width:900px) { .bench { grid-template-columns:250px 1fr; align-items:start; } }
+
+  /* rail */
+  .rail { display:flex; flex-direction:column; gap:1rem; }
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:3px; overflow:hidden; }
+  .panel > .phead { padding:.6rem .8rem; border-bottom:1px solid var(--line); background:var(--sunk); }
+  .panel > .pbody { padding:.75rem .8rem .85rem; display:flex; flex-direction:column; gap:.7rem; }
+
+  .picker { display:flex; flex-direction:column; }
+  .pick {
+    appearance:none; -webkit-appearance:none;
+    display:grid; grid-template-columns:1fr auto; gap:.2rem .6rem; align-items:center;
+    width:100%; text-align:left; cursor:pointer;
+    background:transparent; border:0; border-bottom:1px solid var(--line);
+    padding:.65rem .8rem; color:var(--text); font-family:inherit; font-size:.93rem;
+  }
+  .pick:last-child { border-bottom:0; }
+  .pick:hover { background:var(--sunk); }
+  .pick[aria-pressed="true"] { background:var(--signal-soft); box-shadow:inset 2px 0 0 var(--signal); }
+  .pick b { font-weight:600; letter-spacing:-0.01em; }
+  .pick .dim {
+    font-family:var(--f-mono); font-size:9px; letter-spacing:.1em;
+    border:1px solid var(--line-strong); border-radius:2px; padding:.12rem .3rem; color:var(--text-mute);
+  }
+  .pick[aria-pressed="true"] .dim { border-color:var(--signal); color:var(--signal); }
+  .pick small { grid-column:1/-1; color:var(--text-mute); font-size:.79rem; line-height:1.4; }
+  .pick:focus-visible { outline:2px solid var(--signal); outline-offset:-2px; }
+
+  .field { display:flex; flex-direction:column; gap:.3rem; }
+  .field label { font-family:var(--f-mono); font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--text-mute); }
+  .row { display:flex; gap:.45rem; }
+  input[type="number"] {
+    flex:1; min-width:0; font-family:var(--f-mono); font-size:.82rem; font-variant-numeric:tabular-nums;
+    background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
+    border-radius:2px; padding:.42rem .5rem;
+  }
+  input[type="range"] { width:100%; accent-color:var(--signal); }
+  input[type="text"] {
+    width:100%; min-width:0; font-family:var(--f-mono); font-size:.74rem; font-variant-numeric:tabular-nums;
+    background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
+    border-radius:2px; padding:.42rem .5rem;
+  }
+  select {
+    width:100%; font-family:var(--f-mono); font-size:.78rem;
+    background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
+    border-radius:2px; padding:.42rem .5rem;
+  }
+  .bar { height:4px; background:var(--sunk); border:1px solid var(--line); border-radius:2px; overflow:hidden; margin-bottom:.45rem; }
+  .bar > i { display:block; height:100%; width:0; background:var(--signal); transition:width .25s linear; }
+  #rec-prog { display:flex; flex-direction:column; }
+  .warn { color:var(--none); }
+  input[type="color"] {
+    flex:1; min-width:0; height:26px; padding:0; cursor:pointer;
+    border:1px solid var(--line-strong); border-radius:2px; background:var(--ground);
+  }
+  .swatches { display:grid; grid-template-columns:repeat(auto-fit,minmax(64px,1fr)); gap:.4rem; }
+  .sw {
+    appearance:none; border:1px solid var(--line-strong); border-radius:2px; padding:0;
+    cursor:pointer; overflow:hidden; display:flex; flex-direction:column; background:transparent;
+  }
+  .sw i { display:block; height:22px; }
+  .sw span {
+    font-family:var(--f-mono); font-size:8.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--text-mute); padding:.22rem .1rem; background:var(--ground);
+  }
+  .sw:hover { border-color:var(--signal); }
+  .sw[aria-pressed="true"] { border-color:var(--signal); box-shadow:inset 0 0 0 1px var(--signal); }
+  .sw[aria-pressed="true"] span { color:var(--signal); }
+  .hint { margin:0; font-size:.78rem; line-height:1.5; color:var(--text-mute); }
+  .hint b { font-family:var(--f-mono); font-size:.9em; font-weight:400; color:var(--text-soft); }
+  #cv { touch-action:none; cursor:grab; }
+  #cv.dragging { cursor:grabbing; }
+  button.act {
+    font-family:var(--f-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    background:var(--ground); color:var(--text); border:1px solid var(--line-strong);
+    border-radius:2px; padding:.42rem .6rem; cursor:pointer; white-space:nowrap;
+  }
+  button.act:hover { background:var(--sunk); border-color:var(--signal); color:var(--signal); }
+  button.act[aria-pressed="true"] { background:var(--signal-soft); border-color:var(--signal); color:var(--signal); }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
+  .val { font-family:var(--f-mono); font-size:.78rem; color:var(--text-mute); font-variant-numeric:tabular-nums; }
+
+  /* stage */
+  .stage { display:flex; flex-direction:column; gap:.8rem; min-width:0; }
+  .screen { background:var(--screen); border:1px solid var(--line); border-radius:3px; overflow:hidden; }
+  .screen canvas { display:block; width:100%; height:clamp(300px,52vh,560px); }
+  .screen-bar {
+    display:flex; flex-wrap:wrap; gap:.4rem 1.4rem; justify-content:space-between;
+    padding:.55rem .85rem; border-top:1px solid rgba(255,255,255,.07); background:rgba(255,255,255,.02);
+    font-family:var(--f-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#6E7B8B;
+  }
+  .screen-bar b { color:#AAB7C7; font-weight:400; }
+
+  .explain { background:var(--surface); border:1px solid var(--line); border-radius:3px; padding:.9rem 1rem 1rem; display:flex; flex-direction:column; gap:.5rem; }
+  .explain h2 { margin:0; font-size:.98rem; font-weight:600; letter-spacing:-0.01em; }
+  .explain p { margin:0; color:var(--text-soft); font-size:.9rem; max-width:70ch; }
+  pre.code {
+    margin:0; overflow-x:auto; background:var(--sunk); border:1px solid var(--line);
+    border-radius:2px; padding:.65rem .8rem;
+    font-family:var(--f-mono); font-size:.76rem; line-height:1.75; color:var(--text);
+  }
+  pre.code .c { color:var(--text-mute); }
+
+  footer { color:var(--text-mute); font-size:.82rem; padding-top:.4rem; }
+  footer code { font-family:var(--f-mono); font-size:.9em; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+
+<div class="shell">
+  <div class="masthead">
+    <div>
+      <p class="eyebrow">Banco di prova &middot; generazione procedurale senza dipendenze</p>
+      <h1>Sketch Bench</h1>
+    </div>
+    <p class="sub">Cinque generatori, stesso file, zero librerie. Due lavorano in 2D, tre in 3D — e tutti e cinque disegnano sullo stesso canvas 2D.</p>
+  </div>
+
+  <div class="bench">
+    <div class="rail">
+      <div class="panel">
+        <div class="phead"><p class="eyebrow">Sketch</p></div>
+        <div class="picker" id="picker"></div>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><p class="eyebrow">Palette</p></div>
+        <div class="pbody">
+          <div class="swatches" id="swatches"></div>
+          <div class="field" style="margin-top:.55rem">
+            <label>Su misura</label>
+            <div class="row">
+              <input type="color" id="c0" value="#6a3a1c" title="lontano">
+              <input type="color" id="c1" value="#d67e30" title="medio">
+              <input type="color" id="c2" value="#ffe3aa" title="vicino">
+              <input type="color" id="cbg" value="#0e0907" title="fondo">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><p class="eyebrow">Parametri</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="seed">Seed</label>
+            <div class="row">
+              <input type="number" id="seed" value="20250829" step="1">
+              <button class="act" id="reroll" title="Nuovo seed casuale">Cambia</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="density">Densità <span class="val" id="density-val">100%</span></label>
+            <input type="range" id="density" min="30" max="180" value="100" step="5">
+          </div>
+          <div class="field">
+            <label for="speed">Velocità <span class="val" id="speed-val">1.00&times;</span></label>
+            <input type="range" id="speed" min="0" max="250" value="100" step="5">
+          </div>
+          <div class="field" id="drift-field" hidden>
+            <label for="drift">Deriva interna <span class="val" id="drift-val">1.00&times;</span></label>
+            <input type="range" id="drift" min="0" max="500" value="100" step="10">
+          </div>
+          <div class="field" id="fov-field" hidden>
+            <label for="fov">Prospettiva <span class="val" id="fov-val">1.00</span></label>
+            <input type="range" id="fov" min="45" max="220" value="100" step="5">
+          </div>
+          <div class="row">
+            <button class="act" id="pause" aria-pressed="false" style="flex:1">Pausa</button>
+            <button class="act" id="save" style="flex:1">PNG</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="view-panel" hidden>
+        <div class="phead"><p class="eyebrow">Mondo</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label>Punto di vista</label>
+            <div class="row">
+              <button class="act" id="view-in" aria-pressed="true" style="flex:1">Dentro</button>
+              <button class="act" id="view-out" aria-pressed="false" style="flex:1">Fuori</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="extent">Estensione campo <span class="val" id="extent-val">&infin;</span></label>
+            <input type="range" id="extent" min="25" max="100" value="100" step="1">
+          </div>
+          <p class="hint" id="view-hint">Trascina l'estensione mentre voli: al minimo resta <b>una nuvola sola</b> e la vedi allontanarsi, al massimo il campo è <b>infinito</b> e non ne esci mai. È una dissolvenza, non un interruttore, quindi non c'è nessuno scatto.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="gen-panel" hidden>
+        <div class="phead"><p class="eyebrow">Generazione</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="link">Soglia connessione <span class="val" id="link-val">0.57</span></label>
+            <input type="range" id="link" min="30" max="82" value="57" step="1">
+          </div>
+          <div class="field">
+            <label for="budget">Tetto triangoli <span class="val" id="budget-val">1100</span></label>
+            <input type="range" id="budget" min="0" max="3000" value="1100" step="100">
+          </div>
+          <p class="hint">Archi e triangoli non vengono creati: sono ricalcolati ogni frame dalla distanza fra i nodi. Il ritmo con cui nascono e si spengono si legge sotto il canvas.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="seed-panel" hidden>
+        <div class="phead"><p class="eyebrow">Semi</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="seeds">Punti di partenza <span class="val" id="seeds-val">1</span></label>
+            <input type="range" id="seeds" min="1" max="12" value="1" step="1">
+          </div>
+          <p class="hint">Da ogni seme la struttura si propaga di nodo in nodo. Dove due fronti si toccano, gli archi di frontiera <b>si accendono</b> con la cima della rampa di colore.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="light-panel" hidden>
+        <div class="phead"><p class="eyebrow">Luce</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="ldir">Direzione <span class="val" id="ldir-val">90°</span></label>
+            <input type="range" id="ldir" min="0" max="360" value="90" step="5">
+          </div>
+          <div class="field">
+            <label for="lhei">Altezza <span class="val" id="lhei-val">1.16</span></label>
+            <input type="range" id="lhei" min="-80" max="180" value="116" step="4">
+          </div>
+          <div class="field">
+            <label for="lint">Intensità <span class="val" id="lint-val">1.00</span></label>
+            <input type="range" id="lint" min="0" max="250" value="100" step="5">
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="split-panel" hidden>
+        <div class="phead"><p class="eyebrow">Taglio</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label>Direzione</label>
+            <div class="row">
+              <button class="act" id="cut-orto" aria-pressed="true" style="flex:1">Ortogonale</button>
+              <button class="act" id="cut-diag" aria-pressed="false" style="flex:1">Diagonale</button>
+              <button class="act" id="cut-mix" aria-pressed="false" style="flex:1">Misto</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="depth">Profondità <span class="val" id="depth-val">9</span></label>
+            <input type="range" id="depth" min="3" max="14" value="9" step="1">
+          </div>
+          <div class="field">
+            <label for="reveal">Velocità comparsa <span class="val" id="reveal-val">1.6/frame</span></label>
+            <input type="range" id="reveal" min="1" max="120" value="16" step="1">
+          </div>
+          <div class="field">
+            <label>Smontaggio</label>
+            <div class="row">
+              <button class="act" id="un-rev" aria-pressed="true" style="flex:1">A ritroso</button>
+              <button class="act" id="un-rnd" aria-pressed="false" style="flex:1">Casuale</button>
+              <button class="act" id="un-no" aria-pressed="false" style="flex:1">Mai</button>
+            </div>
+          </div>
+          <p class="hint">Quando la figura è completa resta ferma un momento, poi si smonta: <b>a ritroso</b> ripercorre all'indietro l'ordine di costruzione, l'ultima nata muore per prima. Poi ricomincia.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="cam-panel" hidden>
+        <div class="phead"><p class="eyebrow">Camera</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="cam">Posizione &amp; sguardo</label>
+            <input type="text" id="cam" spellcheck="false" value="0, 0, 0, 0, 0">
+          </div>
+          <button class="act" id="cam-reset">Riporta all'origine</button>
+          <p class="hint" id="cam-hint">Trascina sul canvas per guardarti intorno. <b>W/S</b> o <b>↑/↓</b> per avanzare, <b>A/D</b> per traslare, <b>R/F</b> per salire e scendere, <b>Shift</b> per andare cinque volte più veloce.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><p class="eyebrow">Video</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label for="dur">Durata</label>
+            <select id="dur">
+              <option value="30">30 secondi</option>
+              <option value="60" selected>1 minuto</option>
+              <option value="120">2 minuti</option>
+              <option value="300">5 minuti</option>
+              <option value="600">10 minuti</option>
+              <option value="1200">20 minuti</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="res">Risoluzione</label>
+            <select id="res">
+              <option value="1280x720">1280 &times; 720</option>
+              <option value="1920x1080" selected>1920 &times; 1080</option>
+              <option value="2560x1440">2560 &times; 1440</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="rate">Bitrate <span class="val" id="rate-val">6 Mbps</span></label>
+            <input type="range" id="rate" min="1" max="20" value="6" step="1">
+          </div>
+          <p class="hint" id="rec-est">&mdash;</p>
+          <button class="act" id="rec-go">Registra</button>
+          <div id="rec-prog" hidden>
+            <div class="bar"><i id="rec-fill"></i></div>
+            <p class="hint" id="rec-msg"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <figure class="screen" style="margin:0">
+        <canvas id="cv" aria-label="Sketch generativo in esecuzione"></canvas>
+        <figcaption class="screen-bar">
+          <span id="bar-left">&mdash;</span>
+          <span>fps <b id="bar-fps">&mdash;</b> &nbsp; frame <b id="bar-frame">0</b></span>
+        </figcaption>
+      </figure>
+
+      <div class="explain">
+        <h2 id="ex-title">&mdash;</h2>
+        <p id="ex-body">&mdash;</p>
+        <pre class="code" id="ex-code">&mdash;</pre>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Stesso seed &rarr; stesso risultato, sempre. Nessun modello linguistico in esecuzione: solo <code>Math</code>, un generatore pseudo-casuale seedabile e <code>CanvasRenderingContext2D</code>.
+  </footer>
+</div>
+
+<script>
+/*BUNDLE*/
+</script>

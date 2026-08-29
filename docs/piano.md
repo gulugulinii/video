@@ -27,9 +27,9 @@ illeggibile il testo.
 
 | Fase | Cosa | Stato |
 |---|---|---|
-| F0 | Archivio permanente di piano e decisioni | **in corso** |
-| F1 | Estrarre il motore in moduli `src/` | da fare |
-| F2 | Passo di qualità grafica | da fare |
+| F0 | Archivio permanente di piano e decisioni | fatto |
+| F1 | Estrarre il motore in moduli `src/` | fatto |
+| F2 | Passo di qualità grafica | **prossima** |
 | F3 | Componente sfondo `mountBackground()` | da fare |
 | F4 | Verifica dello sfondo e del contrasto | da fare |
 
@@ -62,6 +62,22 @@ Moduli ES, caricabili con `<script type="module">` senza compilazione.
 `tools/verifica.py` continua a provare il codice vero e non una copia.
 
 Estrazione verbatim: gli attrezzi sono già scritti e provati, non si riscrivono.
+
+**Fatto.** Con due scostamenti dal previsto, entrambi motivati:
+
+- I moduli ES non si caricano da `file://`, quindi il banco a moduli avrebbe
+  richiesto un server locale. Aggiunto `tools/costruisci.py`, che li concatena
+  in un file solo: `src/` resta l'unica copia, il banco resta apribile con un
+  doppio clic. `verifica.py` fallisce se il generato è più vecchio della fonte.
+- `PAL` era una variabile globale che il runtime riassegnava. Le importazioni
+  ES sono in sola lettura, quindi la palette attiva è diventata privata al
+  modulo con `setPalette()` e `getPalette()`. Meglio di prima: nessuno può
+  riassegnarla per sbaglio.
+
+Rimosso `project()`, funzione morta rimasta dallo sketch plexus eliminato.
+
+Prova che l'estrazione è fedele: stesso seed, **zero pixel di differenza** su
+392.084 fra il banco prima e dopo.
 
 ### F2 — Qualità grafica
 

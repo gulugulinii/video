@@ -13,10 +13,15 @@ Esce con 1 se qualcosa non torna, cosi si puo mettere in CI.
 Serve: playwright (e un Chromium: PLAYWRIGHT_BROWSERS_PATH o --chromium).
 """
 import argparse
+import functools
 import glob
+import http.server
 import pathlib
 import re
+import socketserver
+import subprocess
 import sys
+import threading
 
 from playwright.sync_api import sync_playwright
 
@@ -60,6 +65,84 @@ class Esito:
         return 1 if self.errori else 0
 
 
+PAGINA_MODULI = b"""<!doctype html><meta charset="utf-8"><title>prova moduli</title>
+<pre id="out">in corso</pre>
+<script type="module">
+import { SKETCHES, ORDINE } from "/src/sketches/index.js";
+import { mulberry32 } from "/src/engine/rng.js";
+import { setPalette, getPalette, palAt, PALETTES } from "/src/engine/palette.js";
+const r = [];
+r.push("sketch=" + ORDINE.length);
+r.push("contratto=" + ORDINE.every(k => SKETCHES[k] && typeof SKETCHES[k].create === "function"));
+const i = SKETCHES.inside.create(mulberry32(7), 800, 600, 1,
+  { link: 0.57, maxTri: 100, mode: "inside", extent: 99, drift: 1, reveal: 1.6 });
+r.push("istanza=" + [typeof i.step, typeof i.draw, typeof i.getCam].join("/"));
+setPalette("brace");
+r.push("palette=" + getPalette().label + "|" + palAt(0.5) + "|" + Object.keys(PALETTES).length);
+document.getElementById("out").textContent = r.join(" ");
+</script>"""
+
+
+def servi(radice):
+    """Server locale: i moduli ES non si caricano da file://."""
+    class H(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/favicon.ico":
+                self.send_response(204)      # senza, il 404 sporca la console
+                self.end_headers()
+                return
+            if self.path == "/__prova__":
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(PAGINA_MODULI)))
+                self.end_headers()
+                self.wfile.write(PAGINA_MODULI)
+                return
+            super().do_GET()
+
+        def log_message(self, *a):
+            pass
+
+    socketserver.TCPServer.allow_reuse_address = True
+    srv = socketserver.TCPServer(("127.0.0.1", 0), functools.partial(H, directory=str(radice)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv.server_address[1], srv.shutdown
+
+
+def prova_moduli(browser, porta, e):
+    """I moduli in src/ sono la fonte: il bundle puo girare anche con un import
+    rotto, quindi vanno provati per conto loro."""
+    errs = []
+    pg = browser.new_page()
+    pg.on("pageerror", lambda err: errs.append(str(err)))
+    pg.on("console", lambda m: errs.append(m.text)
+          if m.type == "error" and "favicon" not in m.text else None)
+    pg.goto(f"http://127.0.0.1:{porta}/__prova__")
+    pg.wait_for_timeout(2500)
+    out = pg.inner_text("#out")
+    pg.close()
+    if errs:
+        e.ko(f"moduli: {errs[0]}")
+    elif "sketch=6" not in out or "contratto=true" not in out:
+        e.ko(f"moduli: registro incompleto ({out})")
+    elif "istanza=function/function/function" not in out:
+        e.ko(f"moduli: contratto dello sketch non rispettato ({out})")
+    elif "palette=Brace" not in out:
+        e.ko(f"moduli: setPalette non ha effetto ({out})")
+    else:
+        e.ok("i moduli in src/ si caricano e si collegano fra loro")
+
+
+def prova_costruito(e):
+    """Il banco e generato da src/: se qualcuno tocca solo src/, va rigenerato."""
+    r = subprocess.run([sys.executable, str(RADICE / "tools" / "costruisci.py"), "--verifica"],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        e.ok("prototypes/sketch-bench.html e aggiornato rispetto a src/")
+    else:
+        e.ko("il banco e vecchio rispetto a src/: python3 tools/costruisci.py")
+
+
 def fase(pagina):
     """Estrae la fase del ciclo dalla barra sotto il canvas, se c'e."""
     m = re.search(r"·\s*(COSTRUISCE|COMPLETA|SMONTA)", pagina.inner_text("#bar-left").upper())
@@ -84,6 +167,10 @@ def main():
     e = Esito()
     errori_pagina = []
 
+    print("fonte")
+    prova_costruito(e)
+    porta, ferma_server = servi(RADICE)
+
     with sync_playwright() as p:
         exe = trova_chromium(args.chromium)
         browser = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
@@ -91,6 +178,9 @@ def main():
         pg.on("pageerror", lambda err: errori_pagina.append(str(err)))
         pg.goto(PAGINA.as_uri())
         pg.wait_for_timeout(2500)
+
+        if not args.rapido:
+            prova_moduli(browser, porta, e)
 
         # --- ogni sketch gira, e i pannelli giusti compaiono ---
         print("sketch")
@@ -212,6 +302,7 @@ def main():
             e.ok("luce orientabile applicata a caldo")
 
         browser.close()
+    ferma_server()
 
     if errori_pagina:
         for err in errori_pagina:

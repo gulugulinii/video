@@ -19,8 +19,25 @@ L'obiettivo, in ordine di priorità:
 Apri `prototypes/sketch-bench.html` nel browser. Non serve installare niente,
 non serve un server: è un file solo.
 
+**Quel file è generato.** La fonte sono i moduli in `src/`; dopo averli
+modificati va rigenerato:
+
+```bash
+python3 tools/costruisci.py
 ```
-prototypes/sketch-bench.html    il banco di prova, sei sketch
+
+Il doppio passaggio esiste per una ragione precisa: il browser rifiuta di
+caricare moduli ES da `file://`, quindi un banco fatto di moduli richiederebbe
+un server locale. Concatenandoli in un file solo resta apribile con un doppio
+clic, e `src/` resta l'unica copia del codice — così il sito e il banco non
+divergono. `tools/verifica.py` fallisce se il file generato è più vecchio
+di `src/`.
+
+```
+src/engine/                     il motore: rng, rumore, camera, DOF, palette…
+src/sketches/                   un file per sketch, stesso contratto
+src/bench/                      runtime e template del banco
+prototypes/sketch-bench.html    il banco, GENERATO da src/ — non modificare
 prototypes/plexus-teardown.html l'analisi iniziale, con demo live
 docs/piano.md                   il piano attivo, con lo stato di ogni fase
 docs/decisioni.md               perché il codice è fatto così
@@ -61,11 +78,13 @@ esce tutta la sensazione di volume.
 
 ## Come si estende
 
-Ogni sketch è un oggetto con la stessa forma. Per aggiungerne uno se ne scrive
-un altro con quella forma e compare nella lista:
+Ogni sketch è un modulo in `src/sketches/` con la stessa forma. Per aggiungerne
+uno se ne scrive un altro con quella forma, lo si registra in
+`src/sketches/index.js`, e si rigenera:
 
 ```js
-SKETCHES.mio = {
+// src/sketches/mio.js
+export const sketch = {
   label: "Il mio", dim: "3D",
   hasCam: true,                     // vuole camera, punto di vista, estensione
   create: function (rnd, w, h, densita, P) {
@@ -86,6 +105,7 @@ raggruppato), `makeCycle` (costruzione e smontaggio), `makeNoise3` (rumore 3D),
 
 ```bash
 pip install -r tools/requirements.txt
+python3 tools/costruisci.py                   # rigenera il banco da src/
 python3 tools/verifica.py --out /tmp/prova    # gira tutti gli sketch, esce 1 se qualcosa non va
 python3 tools/misura.py render.png            # confronta saturazione e luminanza col riferimento
 ```
@@ -94,7 +114,9 @@ python3 tools/misura.py render.png            # confronta saturazione e luminanz
 stato provato finora, e controlla cose che a occhio non si vedono: che ogni
 sketch stia sopra i 20 fps, che il ciclo di costruzione raggiunga davvero tutte
 e tre le fasi, che un solo seme dia zero giunzioni e quattro semi ne diano molte,
-che i tasti muovano la camera anche dopo aver toccato un cursore.
+che i tasti muovano la camera anche dopo aver toccato un cursore, che i moduli
+in `src/` si carichino davvero (il file generato potrebbe girare anche con un
+import rotto) e che non sia più vecchio della sua fonte.
 
 `misura.py` è servito a trovare due difetti reali: una saturazione di 3.9 dove
 doveva essere 0, e una luminanza media di 20 contro le 36 del riferimento.
