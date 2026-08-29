@@ -1,0 +1,11 @@
+# uscite delle verifiche
+/out/
+/schermate/
+*.webm
+*.mp4
+!reference/*.mp4
+
+# roba di sistema
+__pycache__/
+.DS_Store
+node_modules/

@@ -1,0 +1,6 @@
+# Strumenti di verifica e misura. Nessuno di questi serve per usare il banco:
+# prototypes/sketch-bench.html si apre nel browser e basta.
+playwright>=1.40      # tools/verifica.py
+pillow>=10.0          # tools/misura.py
+numpy>=1.24           # tools/misura.py
+imageio-ffmpeg>=0.4   # tools/misura.py, solo per misurare i video
