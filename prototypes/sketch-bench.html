@@ -170,6 +170,10 @@
             <label for="speed">Velocità <span class="val" id="speed-val">1.00&times;</span></label>
             <input type="range" id="speed" min="0" max="250" value="100" step="5">
           </div>
+          <div class="field" id="drift-field" hidden>
+            <label for="drift">Deriva interna <span class="val" id="drift-val">1.00&times;</span></label>
+            <input type="range" id="drift" min="0" max="500" value="100" step="10">
+          </div>
           <div class="field" id="fov-field" hidden>
             <label for="fov">Prospettiva <span class="val" id="fov-val">1.00</span></label>
             <input type="range" id="fov" min="45" max="220" value="100" step="5">
@@ -181,6 +185,24 @@
         </div>
       </div>
 
+      <div class="panel" id="view-panel" hidden>
+        <div class="phead"><p class="eyebrow">Mondo</p></div>
+        <div class="pbody">
+          <div class="field">
+            <label>Punto di vista</label>
+            <div class="row">
+              <button class="act" id="view-in" aria-pressed="true" style="flex:1">Dentro</button>
+              <button class="act" id="view-out" aria-pressed="false" style="flex:1">Fuori</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="extent">Estensione campo <span class="val" id="extent-val">&infin;</span></label>
+            <input type="range" id="extent" min="25" max="100" value="100" step="1">
+          </div>
+          <p class="hint" id="view-hint">Trascina l'estensione mentre voli: al minimo resta <b>una nuvola sola</b> e la vedi allontanarsi, al massimo il campo è <b>infinito</b> e non ne esci mai. È una dissolvenza, non un interruttore, quindi non c'è nessuno scatto.</p>
+        </div>
+      </div>
+
       <div class="panel" id="gen-panel" hidden>
         <div class="phead"><p class="eyebrow">Generazione</p></div>
         <div class="pbody">
@@ -189,21 +211,32 @@
             <input type="range" id="link" min="30" max="82" value="57" step="1">
           </div>
           <div class="field">
-            <label for="drift">Deriva nodi <span class="val" id="drift-val">1.00&times;</span></label>
-            <input type="range" id="drift" min="0" max="500" value="100" step="10">
-          </div>
-          <div class="field">
             <label for="budget">Tetto triangoli <span class="val" id="budget-val">1100</span></label>
             <input type="range" id="budget" min="0" max="3000" value="1100" step="100">
           </div>
+          <p class="hint">Archi e triangoli non vengono creati: sono ricalcolati ogni frame dalla distanza fra i nodi. Il ritmo con cui nascono e si spengono si legge sotto il canvas.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="split-panel" hidden>
+        <div class="phead"><p class="eyebrow">Taglio</p></div>
+        <div class="pbody">
           <div class="field">
-            <label>Punto di vista</label>
+            <label>Direzione</label>
             <div class="row">
-              <button class="act" id="view-in" aria-pressed="true" style="flex:1">Dentro</button>
-              <button class="act" id="view-out" aria-pressed="false" style="flex:1">Fuori</button>
+              <button class="act" id="cut-orto" aria-pressed="true" style="flex:1">Ortogonale</button>
+              <button class="act" id="cut-diag" aria-pressed="false" style="flex:1">Diagonale</button>
+              <button class="act" id="cut-mix" aria-pressed="false" style="flex:1">Misto</button>
             </div>
           </div>
-          <p class="hint" id="view-hint">Sei <b>dentro</b>: il campo si avvolge attorno alla camera e non ne esci mai. Premi <b>Fuori</b> e la camera si allontana da sola fino a inquadrare la nuvola intera, poi le orbita attorno.</p>
+          <div class="field">
+            <label for="depth">Profondità <span class="val" id="depth-val">9</span></label>
+            <input type="range" id="depth" min="3" max="14" value="9" step="1">
+          </div>
+          <div class="field">
+            <label for="reveal">Velocità comparsa <span class="val" id="reveal-val">1.6/frame</span></label>
+            <input type="range" id="reveal" min="1" max="120" value="16" step="1">
+          </div>
         </div>
       </div>
 
@@ -321,10 +354,256 @@ function project(x, y, z, w, h, camDist, focal) {
 /* ======================= SKETCH ======================= */
 var SKETCHES = {};
 
+/* ---------------- attrezzi condivisi ---------------- */
+
+/* Rumore di valore 3D su tabella seedata. Stessa idea della versione 2D:
+   una griglia di valori casuali, interpolata dolcemente. */
+function makeNoise3(rnd) {
+  var S = 32, g = new Float32Array(S * S * S), i;
+  for (i = 0; i < g.length; i++) g[i] = rnd();
+  function fade(t) { return t * t * (3 - 2 * t); }
+  function at(x, y, z) { return g[(z * S + y) * S + x]; }
+  return function (x, y, z) {
+    x = ((x % S) + S) % S; y = ((y % S) + S) % S; z = ((z % S) + S) % S;
+    var x0 = Math.floor(x), y0 = Math.floor(y), z0 = Math.floor(z);
+    var fx = fade(x - x0), fy = fade(y - y0), fz = fade(z - z0);
+    var x1 = (x0 + 1) % S, y1 = (y0 + 1) % S, z1 = (z0 + 1) % S;
+    var c00 = at(x0, y0, z0) * (1 - fx) + at(x1, y0, z0) * fx;
+    var c10 = at(x0, y1, z0) * (1 - fx) + at(x1, y1, z0) * fx;
+    var c01 = at(x0, y0, z1) * (1 - fx) + at(x1, y0, z1) * fx;
+    var c11 = at(x0, y1, z1) * (1 - fx) + at(x1, y1, z1) * fx;
+    return (c00 * (1 - fy) + c10 * fy) * (1 - fz) + (c01 * (1 - fy) + c11 * fy) * fz;
+  };
+}
+
+/* Estensione del campo, l'unica cosa che separa "finito" da "infinito".
+   Le posizioni si avvolgono sempre, quindi il mondo è sempre fatto di copie;
+   ciò che cambia è quante ne restano accese. Un inviluppo morbido attorno
+   all'origine spegne le copie oltre il raggio R: con R piccolo resta una sola
+   nuvola, con R grande se ne accendono infinite. Poiché è una dissolvenza e non
+   un interruttore, R si può muovere mentre voli senza nessuno scatto. */
+var EXTENT_INF = 99;
+
+/* Quale copia disegnare. L'avvolgimento sceglie sempre la copia più vicina alla
+   camera, il che è giusto solo finché quella copia esiste: con estensione finita
+   e camera lontana, la copia vicina è spenta mentre l'originale è ancora accesa.
+   Si valutano entrambe e vince quella più visibile — ed è questo che permette di
+   allontanarsi e continuare a vedere la nuvola. Scrive in out:
+   [dx, dy, dz, env, offX, offY, offZ]. */
+function pickCopy(px, py, pz, cam, B, R, out) {
+  var dx = px - cam.x, dy = py - cam.y, dz = pz - cam.z;
+  var ox = B * Math.round(dx / B), oy = B * Math.round(dy / B), oz = B * Math.round(dz / B);
+  var envW = envelopeAt(px - ox, py - oy, pz - oz, R);
+  var envB = envelopeAt(px, py, pz, R);
+  if (envW >= envB) {
+    out[0] = dx - ox; out[1] = dy - oy; out[2] = dz - oz; out[3] = envW;
+    out[4] = ox; out[5] = oy; out[6] = oz;
+  } else {
+    out[0] = dx; out[1] = dy; out[2] = dz; out[3] = envB;
+    out[4] = 0; out[5] = 0; out[6] = 0;
+  }
+}
+
+function envelopeAt(wx, wy, wz, R) {
+  if (R >= EXTENT_INF) return 1;
+  var d = Math.sqrt(wx * wx + wy * wy + wz * wz);
+  var soft = Math.max(1.0, R * 0.35);
+  return Math.max(0, Math.min(1, (R + soft - d) / soft));
+}
+
+/* Camera in prima persona con due inquadrature.
+   DENTRO: sta nel mezzo e deriva lentamente in avanti.
+   FUORI:  sta su un'orbita attorno all'origine e guarda verso il centro. */
+function makeCam3D() {
+  var cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
+  var mode = "inside", focal = 1.0, autoDrift = 0.30;
+  var orbA = 0, orbR = 5.5, orbRT = 5.5, orbH = 0.6, yawOff = 0, pitchOff = 0;
+  var cy = 1, sy = 0, cp = 1, sp = 0;
+
+  return {
+    get: function () { return cam; },
+    focal: function () { return focal; },
+    set: function (c) {
+      if (mode === "outside") {
+        var d = Math.sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
+        orbR = orbRT = d < 1.8 ? 5.5 : Math.min(40, d);
+        if (c.x !== 0 || c.z !== 0) orbA = Math.atan2(c.x, c.z);
+        orbH = c.y; yawOff = 0; pitchOff = 0;
+        return;
+      }
+      cam.x = c.x; cam.y = c.y; cam.z = c.z; cam.yaw = c.yaw; cam.pitch = c.pitch;
+    },
+    step: function (dt, input, P, extentR) {
+      var want = (P && P.mode) ? P.mode : "inside";
+      if (want !== mode) {
+        mode = want;
+        if (mode === "outside") {
+          var d0 = Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z);
+          orbA = (cam.x === 0 && cam.z === 0) ? 0 : Math.atan2(cam.x, cam.z);
+          orbR = Math.max(0.6, d0); orbRT = 5.5; orbH = 0.6; yawOff = 0; pitchOff = 0;
+        } else { cam.x = 0; cam.y = 0; cam.z = 0; cam.yaw = 0; cam.pitch = 0; }
+      }
+      var mf = input ? input.moveF : 0, mr = input ? input.moveR : 0, mu = input ? input.moveU : 0;
+      var fast = (input && input.boost) ? 5 : 1;
+
+      if (mode === "outside") {
+        if (input) {
+          yawOff += input.lookX * 0.0040;
+          pitchOff = Math.max(-1, Math.min(1, pitchOff + input.lookY * 0.0040));
+          if (input.fov) focal = input.fov;
+        }
+        var st = 0.055 * dt * fast;
+        orbRT = Math.max(1.8, Math.min(40, orbRT - mf * st));
+        orbH += mu * st * 0.5;
+        orbA += mr * st * 0.10 + dt * 0.0016;
+        orbR += (orbRT - orbR) * 0.045 * dt;
+        cam.x = Math.sin(orbA) * orbR; cam.y = orbH; cam.z = Math.cos(orbA) * orbR;
+        var L = Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z) || 1;
+        cam.yaw = Math.atan2(-cam.x / L, -cam.z / L) + yawOff;
+        cam.pitch = Math.asin(Math.max(-1, Math.min(1, -cam.y / L))) + pitchOff;
+      } else {
+        if (input) {
+          cam.yaw += input.lookX * 0.0040;
+          cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch + input.lookY * 0.0040));
+          if (input.fov) focal = input.fov;
+        }
+        var a = Math.cos(cam.yaw), b = Math.sin(cam.yaw);
+        var c2 = Math.cos(cam.pitch), d2 = Math.sin(cam.pitch);
+        var fwd = [b * c2, d2, a * c2], rgt = [a, 0, -b], up = [-d2 * b, c2, -d2 * a];
+        /* La deriva automatica si ferma se sei già uscito dal campo finito,
+           altrimenti voleresti via nel vuoto per sempre. */
+        var outOfField = extentR < EXTENT_INF &&
+          Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z) > extentR;
+        if (mf === 0 && mr === 0 && mu === 0 && !outOfField) mf = autoDrift;
+        var sc = 0.011 * dt * fast;
+        cam.x += (fwd[0] * mf + rgt[0] * mr + up[0] * mu) * sc;
+        cam.y += (fwd[1] * mf + rgt[1] * mr + up[1] * mu) * sc;
+        cam.z += (fwd[2] * mf + rgt[2] * mr + up[2] * mu) * sc;
+      }
+    },
+    /* da chiamare una volta per frame, prima di project() */
+    prepare: function () {
+      cy = Math.cos(cam.yaw); sy = Math.sin(cam.yaw);
+      cp = Math.cos(cam.pitch); sp = Math.sin(cam.pitch);
+    },
+    /* mondo relativo alla camera -> schermo. La divisione per la profondità
+       è tutta qui: è l'unica differenza fra uno sketch 2D e uno 3D. */
+    project: function (dx, dy, dz, w, h, k) {
+      var x1 = dx * cy - dz * sy, z1 = dx * sy + dz * cy;
+      var y2 = dy * cp - z1 * sp, z2 = dy * sp + z1 * cp;
+      if (z2 < 0.09) return null;
+      var s = focal / z2;
+      return { sx: w * 0.5 + x1 * s * k, sy: h * 0.5 + y2 * s * k, z: z2 };
+    },
+    dist: function () { return Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z); }
+  };
+}
+
+/* Profondità di campo a tre strati. Gli strati sfocati sono renderizzati a metà
+   risoluzione e sfocati nella LORO risoluzione: costa un quarto dei pixel e il
+   risultato è indistinguibile. È l'unico posto dove i piani sovrapposti servono. */
+function makeDof() {
+  var SC = [0.5, 1, 0.5], BL = [7, 0, 1.4];
+  var L = null, lw = 0, lh = 0, ld = 0;
+  var b0 = 0.62, b1 = 1.55;
+  return {
+    thresholds: function (n, f) { b0 = n; b1 = f; },
+    binOf: function (z) { return z < b0 ? 0 : (z < b1 ? 1 : 2); },
+    begin: function (w, h, dpr) {
+      if (!L || lw !== w || lh !== h || ld !== dpr) {
+        lw = w; lh = h; ld = dpr; L = [];
+        for (var n = 0; n < 3; n++) {
+          var cw = Math.max(1, Math.round(w * dpr * SC[n])), ch = Math.max(1, Math.round(h * dpr * SC[n]));
+          var c = document.createElement("canvas"); c.width = cw; c.height = ch;
+          var e = { cv: c, ctx: c.getContext("2d"), scale: SC[n], tmp: null, tctx: null };
+          if (BL[n] > 0) {
+            var t = document.createElement("canvas"); t.width = cw; t.height = ch;
+            e.tmp = t; e.tctx = t.getContext("2d");
+          }
+          L.push(e);
+        }
+      }
+      for (var i = 0; i < 3; i++) {
+        var s = dpr * L[i].scale;
+        L[i].ctx.setTransform(s, 0, 0, s, 0, 0);
+        L[i].ctx.clearRect(0, 0, w, h);
+        L[i].ctx.globalCompositeOperation = "lighter";
+      }
+      return L;
+    },
+    end: function (ctx, w, h, dpr) {
+      for (var i = 0; i < 3; i++) {
+        var e = L[i], src = e.cv;
+        if (e.tmp) {
+          var r = BL[i] * dpr * e.scale;
+          e.tctx.setTransform(1, 0, 0, 1, 0, 0);
+          e.tctx.clearRect(0, 0, e.tmp.width, e.tmp.height);
+          if ("filter" in e.tctx) e.tctx.filter = "blur(" + r.toFixed(2) + "px)";
+          e.tctx.drawImage(e.cv, 0, 0);
+          if ("filter" in e.tctx) e.tctx.filter = "none";
+          src = e.tmp;
+        }
+        e.out = src;
+      }
+      ctx.drawImage(L[2].out, 0, 0, w, h);   /* lontano */
+      ctx.drawImage(L[1].out, 0, 0, w, h);   /* a fuoco */
+      ctx.drawImage(L[0].out, 0, 0, w, h);   /* vicino, sfocato */
+    }
+  };
+}
+
+/* Percorsi raggruppati per (strato, livello di opacità): poche decine di
+   stroke() e fill() invece di alcune migliaia. */
+function makeBatch(nb) {
+  var s = { tri: [], edge: [], node: [], nb: nb };
+  for (var l = 0; l < 3; l++) { s.tri.push(new Array(nb)); s.edge.push(new Array(nb)); s.node.push(new Array(nb)); }
+  s.bucket = function (a) { var b = (a * nb) | 0; return b < 0 ? 0 : (b >= nb ? nb - 1 : b); };
+  s.path = function (store, l, b) {
+    var p = store[l][b]; if (!p) { p = new Path2D(); store[l][b] = p; } return p;
+  };
+  s.flush = function (L, triA, edgeA, nodeA) {
+    for (var l = 0; l < 3; l++) {
+      var x = L[l].ctx;
+      for (var b = 0; b < nb; b++) {
+        var a = (b + 0.5) / nb;
+        if (s.tri[l][b]) { x.fillStyle = "rgba(255,255,255," + (triA * a).toFixed(4) + ")"; x.fill(s.tri[l][b]); }
+        if (s.edge[l][b]) {
+          x.strokeStyle = "rgba(234,234,234," + (edgeA * a).toFixed(4) + ")";
+          x.lineWidth = 0.5 + a * 0.8; x.stroke(s.edge[l][b]);
+        }
+        if (s.node[l][b]) { x.fillStyle = "rgba(255,255,255," + (nodeA[0] + a * nodeA[1]).toFixed(3) + ")"; x.fill(s.node[l][b]); }
+      }
+    }
+  };
+  return s;
+}
+
+/* Taglio di un poligono convesso con una retta. Un'unica funzione copre sia i
+   tagli ortogonali sia quelli diagonali: cambia solo la direzione della retta. */
+function cutPoly(poly, px, py, nx, ny) {
+  var A = [], B = [], i, n = poly.length;
+  function side(p) { return (p[0] - px) * nx + (p[1] - py) * ny; }
+  for (i = 0; i < n; i++) {
+    var p = poly[i], q = poly[(i + 1) % n];
+    var sp = side(p), sq = side(q);
+    if (sp >= 0) A.push(p); else B.push(p);
+    if ((sp > 0 && sq < 0) || (sp < 0 && sq > 0)) {
+      var t = sp / (sp - sq);
+      var m = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+      A.push(m); B.push(m.slice());
+    }
+  }
+  return (A.length >= 3 && B.length >= 3) ? [A, B] : null;
+}
+function polyArea(p) {
+  var a = 0; for (var i = 0; i < p.length; i++) {
+    var q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1];
+  } return Math.abs(a) / 2;
+}
+
 /* --- 1. Flow field (2D) --- */
 SKETCHES.flow = {
-  label: "Flow field",
-  dim: "2D",
+  label: "Flow field", dim: "2D",
   blurb: "Particelle che seguono un campo di direzioni ricavato dal rumore.",
   clear: "trail",
   title: "Flow field — 2D puro",
@@ -340,8 +619,7 @@ SKETCHES.flow = {
         for (var i = 0; i < ps.length; i++) {
           var p = ps[i];
           var a = noise(p.x / 90, p.y / 90) * Math.PI * 4;
-          p.x += Math.cos(a) * 1.1 * dt;
-          p.y += Math.sin(a) * 1.1 * dt;
+          p.x += Math.cos(a) * 1.1 * dt; p.y += Math.sin(a) * 1.1 * dt;
           p.life -= dt;
           if (p.life <= 0 || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
             p.x = rnd() * w; p.y = rnd() * h; p.life = 120 + rnd() * 160;
@@ -358,364 +636,129 @@ SKETCHES.flow = {
 
 /* --- 2. Suddivisione ricorsiva (2D) --- */
 SKETCHES.split = {
-  label: "Suddivisione",
-  dim: "2D",
-  blurb: "Un rettangolo tagliato ricorsivamente, con rivelazione progressiva.",
+  label: "Suddivisione", dim: "2D", hasSplit: true,
+  blurb: "Un rettangolo tagliato ricorsivamente, in ortogonale o in diagonale.",
   clear: "full",
   title: "Suddivisione ricorsiva — 2D puro",
-  body: "Si parte da un rettangolo e lo si taglia in due, poi si ripete su ogni metà finché non si è abbastanza piccoli. Il caso decide dove tagliare e in quale verso. Nessun moto: l'animazione è solo l'ordine in cui le celle appaiono.",
-  code: "<span class='c'>// ricorsione: taglia e ripeti su entrambe le metà</span>\nfunction split(x, y, w, h, d) {\n  if (d === 0 || (w < 26 &amp;&amp; h < 26)) return cells.push({x,y,w,h});\n  var vert = w > h ? rnd() &lt; 0.82 : rnd() &lt; 0.18;\n  var t = 0.3 + rnd() * 0.4;\n  <span class='c'>// ... due chiamate ricorsive sulle due parti</span>\n}",
-  create: function (rnd, w, h, density) {
-    var cells = [], maxD = Math.max(4, Math.round(8 * Math.sqrt(density)));
-    (function split(x, y, ww, hh, d) {
-      if (d === 0 || (ww < 26 && hh < 26) || (ww < 12 || hh < 12)) { cells.push({ x: x, y: y, w: ww, h: hh, g: rnd() }); return; }
-      var vert = ww > hh ? rnd() < 0.82 : rnd() < 0.18;
-      var t = 0.3 + rnd() * 0.4;
-      if (vert) { var cw = ww * t; split(x, y, cw, hh, d - 1); split(x + cw, y, ww - cw, hh, d - 1); }
-      else { var ch = hh * t; split(x, y, ww, ch, d - 1); split(x, y + ch, ww, hh - ch, d - 1); }
-    })(0, 0, w, h, maxD);
+  body: "Si parte da un rettangolo e lo si taglia in due, poi si ripete su ogni metà finché le celle non sono abbastanza piccole. Le celle non sono rettangoli ma poligoni convessi, e il taglio è una retta qualsiasi: per questo lo stesso identico codice produce sia la griglia ortogonale sia la tassellazione diagonale. Cambia solo la direzione della retta.",
+  code: "<span class='c'>// una sola funzione per entrambi i modi: cambia la normale</span>\nvar ang = orto ? (larga ? 0 : Math.PI/2)\n              : (Math.PI/4 + rnd() * Math.PI/2);\nvar parti = cutPoly(cella, px, py, Math.cos(ang), Math.sin(ang));\n<span class='c'>// poi ricorsione su parti[0] e parti[1]</span>",
+  create: function (rnd, w, h, density, P) {
+    var mode = (P && P.splitMode) || "orto";
+    var depth = Math.max(3, Math.round((P ? P.splitDepth : 9) * Math.sqrt(density)));
+    var minA = Math.max(120, (w * h) / (14 * Math.pow(2, Math.min(depth, 11)) + 60));
+    var cells = [];
+    (function rec(poly, d) {
+      var area = polyArea(poly);
+      if (d === 0 || area < minA) { cells.push({ p: poly, g: rnd(), a: area }); return; }
+      /* baricentro, spostato a caso, come punto di passaggio della retta */
+      var cx = 0, cy = 0, i;
+      for (i = 0; i < poly.length; i++) { cx += poly[i][0]; cy += poly[i][1]; }
+      cx /= poly.length; cy /= poly.length;
+      var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+      for (i = 0; i < poly.length; i++) {
+        minx = Math.min(minx, poly[i][0]); maxx = Math.max(maxx, poly[i][0]);
+        miny = Math.min(miny, poly[i][1]); maxy = Math.max(maxy, poly[i][1]);
+      }
+      var wide = (maxx - minx) >= (maxy - miny);
+      var ang;
+      var diag = mode === "diag" || (mode === "misto" && rnd() < 0.5);
+      if (diag) ang = Math.PI * 0.25 + rnd() * Math.PI * 0.5;
+      else ang = wide ? 0 : Math.PI / 2;
+      cx += (rnd() - 0.5) * (maxx - minx) * 0.34;
+      cy += (rnd() - 0.5) * (maxy - miny) * 0.34;
+      var parts = cutPoly(poly, cx, cy, Math.cos(ang), Math.sin(ang));
+      if (!parts) { cells.push({ p: poly, g: rnd(), a: area }); return; }
+      rec(parts[0], d - 1); rec(parts[1], d - 1);
+    })([[0, 0], [w, 0], [w, h], [0, h]], depth);
+
     var shown = 0;
     return {
       count: cells.length,
-      step: function (dt) { shown = Math.min(cells.length, shown + dt * 1.6); },
+      step: function (dt) { shown = Math.min(cells.length, shown + dt * (P ? P.reveal : 1.6)); },
       draw: function (ctx) {
-        var n = Math.floor(shown);
-        for (var i = 0; i < n; i++) {
-          var c = cells[i], pad = 1.2;
+        var n = Math.floor(shown), i, j;
+        for (i = 0; i < n; i++) {
+          var c = cells[i], p = c.p;
+          ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
+          for (j = 1; j < p.length; j++) ctx.lineTo(p[j][0], p[j][1]);
+          ctx.closePath();
           ctx.fillStyle = "rgba(233,239,246," + (0.04 + c.g * 0.14).toFixed(3) + ")";
-          ctx.fillRect(c.x + pad, c.y + pad, Math.max(0, c.w - pad * 2), Math.max(0, c.h - pad * 2));
-          ctx.strokeStyle = "rgba(233,239,246," + (0.10 + c.g * 0.22).toFixed(3) + ")";
-          ctx.lineWidth = 0.7;
-          ctx.strokeRect(c.x + pad, c.y + pad, Math.max(0, c.w - pad * 2), Math.max(0, c.h - pad * 2));
-        }
-      },
-      done: function () { return shown >= cells.length; }
-    };
-  }
-};
-
-/* --- 3. Plexus (3D) --- */
-SKETCHES.plexus = {
-  label: "Plexus",
-  dim: "3D",
-  blurb: "Nodi nello spazio, archi per prossimità, triangoli fra triple vicine.",
-  clear: "full",
-  title: "Plexus — 3D disegnato in 2D",
-  body: "I nodi vivono in un cubo e hanno tre coordinate. Ogni frame vengono proiettati sullo schermo dividendo per la profondità, poi si tracciano gli archi fra i nodi abbastanza vicini nello spazio 3D — non sullo schermo. È la ragione per cui non si può fare sovrapponendo piani: un arco collega spesso un nodo vicino a uno lontano, quindi non appartiene a nessun piano.",
-  code: "<span class='c'>// la profondità decide posizione, dimensione e opacità</span>\nvar zc = z + camDist;\nvar s  = focal / zc;              <span class='c'>// &lt;- il 3D è tutto qui</span>\nvar sx = w/2 + x * s * k;\nvar sy = h/2 + y * s * k;\nvar fade = clamp((4.6 - zc) / 2.6);   <span class='c'>// lontano = tenue</span>",
-  create: function (rnd, w, h, density) {
-    var N = Math.round(150 * density), LINK = 0.46, pts = [], i;
-    for (i = 0; i < N; i++) pts.push({
-      x: rnd() * 2 - 1, y: rnd() * 2 - 1, z: rnd() * 2 - 1,
-      vx: (rnd() - .5) * .0022, vy: (rnd() - .5) * .0022, vz: (rnd() - .5) * .0022
-    });
-    var ang = 0, edges = 0, tris = 0;
-    return {
-      count: N,
-      step: function (dt) {
-        ang += dt * 0.0018;
-        for (var i = 0; i < N; i++) {
-          var p = pts[i];
-          p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-          if (p.x < -1 || p.x > 1) p.vx = -p.vx;
-          if (p.y < -1 || p.y > 1) p.vy = -p.vy;
-          if (p.z < -1 || p.z > 1) p.vz = -p.vz;
-        }
-      },
-      draw: function (ctx, w, h) {
-        var ca = Math.cos(ang), sa = Math.sin(ang);
-        var proj = new Array(N), fade = new Array(N), i;
-        for (i = 0; i < N; i++) {
-          var p = pts[i];
-          var rx = p.x * ca - p.z * sa, rz = p.x * sa + p.z * ca;
-          var q = project(rx, p.y, rz, w, h, 1.95, 1.30);
-          proj[i] = q;
-          fade[i] = q ? Math.max(0, Math.min(1, (3.55 - q.zc) / 2.15)) : 0;
-        }
-        var adj = [], a, b;
-        for (a = 0; a < N; a++) adj.push([]);
-        edges = 0;
-        for (a = 0; a < N; a++) {
-          if (!proj[a]) continue;
-          for (b = a + 1; b < N; b++) {
-            if (!proj[b]) continue;
-            var dx = pts[a].x - pts[b].x, dy = pts[a].y - pts[b].y, dz = pts[a].z - pts[b].z;
-            if (dx * dx + dy * dy + dz * dz < LINK * LINK) { adj[a].push(b); adj[b].push(a); edges++; }
-          }
-        }
-        ctx.globalCompositeOperation = "lighter";
-        tris = 0;
-        for (var c = 0; c < N; c++) {
-          var nb = adj[c];
-          for (var m = 0; m < nb.length; m++) {
-            var j = nb[m]; if (j < c) continue;
-            for (var n = m + 1; n < nb.length; n++) {
-              var k = nb[n]; if (k < j || adj[j].indexOf(k) === -1) continue;
-              var A = proj[c], B = proj[j], C = proj[k];
-              if (!A || !B || !C) continue;
-              var f = (fade[c] + fade[j] + fade[k]) / 3;
-              if (f <= 0.02) continue;
-              ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(B.sx, B.sy); ctx.lineTo(C.sx, C.sy); ctx.closePath();
-              ctx.fillStyle = "rgba(255,255,255," + (0.026 * f).toFixed(4) + ")";
-              ctx.fill(); tris++;
-            }
-          }
-        }
-        for (var e = 0; e < N; e++) {
-          if (!proj[e]) continue;
-          var lst = adj[e];
-          for (var q2 = 0; q2 < lst.length; q2++) {
-            var o = lst[q2]; if (o < e || !proj[o]) continue;
-            var ex = pts[e].x - pts[o].x, ey = pts[e].y - pts[o].y, ez = pts[e].z - pts[o].z;
-            var dd = Math.sqrt(ex * ex + ey * ey + ez * ez);
-            var al = (1 - dd / LINK) * (fade[e] + fade[o]) * 0.5;
-            if (al <= 0.01) continue;
-            ctx.strokeStyle = "rgba(226,233,242," + (al * 0.34).toFixed(4) + ")";
-            ctx.lineWidth = 0.55 + al * 0.5;
-            ctx.beginPath(); ctx.moveTo(proj[e].sx, proj[e].sy); ctx.lineTo(proj[o].sx, proj[o].sy); ctx.stroke();
-          }
-        }
-        for (var v = 0; v < N; v++) {
-          if (!proj[v] || fade[v] <= 0.02) continue;
-          ctx.beginPath(); ctx.arc(proj[v].sx, proj[v].sy, 0.7 + fade[v] * 1.9, 0, 6.2832);
-          ctx.fillStyle = "rgba(255,255,255," + (0.28 + fade[v] * 0.6).toFixed(3) + ")";
           ctx.fill();
+          ctx.strokeStyle = "rgba(233,239,246," + (0.12 + c.g * 0.24).toFixed(3) + ")";
+          ctx.lineWidth = 0.7; ctx.stroke();
         }
-        ctx.globalCompositeOperation = "source-over";
       },
-      stats: function () { return "archi " + edges + " · triangoli " + tris; }
+      stats: function () { return "celle " + Math.floor(shown) + " di " + cells.length; }
     };
   }
 };
 
-/* --- 4. Immersione: la camera sta DENTRO la nuvola (3D) --- */
+/* --- 3. Immersione: nuvola di nodi con camera (3D) --- */
 SKETCHES.inside = {
-  label: "Immersione",
-  dim: "3D",
-  blurb: "La camera è dentro il campo. Trascina per guardarti intorno, W/S per volare.",
+  label: "Immersione", dim: "3D", hasCam: true, hasGen: true, hasDrift: true,
+  blurb: "Nodi collegati per prossimità, con la camera dentro o in orbita fuori.",
   clear: "full",
-  hasCam: true,
-  title: "Immersione — la camera è dentro la nuvola",
-  body: "Tutto qui riguarda la posizione di chi guarda. Da dentro, il campo si avvolge attorno alla camera: non ne esci mai, e i nodi ti vengono incontro. Da fuori, la nuvola torna a essere un oggetto finito e la camera le orbita attorno. In entrambi i casi il disegnato viene diviso in tre strati per distanza e lo strato vicino viene sfocato: è la profondità di campo, ed è l'unico punto in cui i piani sovrapposti servono davvero.",
-  code: "<span class='c'>// mondo -&gt; vista: sposta secondo la camera, poi ruota</span>\nvar dx = wrap(p.x - cam.x), dy = wrap(p.y - cam.y), dz = wrap(p.z - cam.z);\nvar x1 = dx * cy - dz * sy,  z1 = dx * sy + dz * cy;   <span class='c'>// imbardata</span>\nvar y2 = dy * cp - z1 * sp,  z2 = dy * sp + z1 * cp;   <span class='c'>// beccheggio</span>\n\n<span class='c'>// wrap(): il campo si ripete, la camera non ne esce mai</span>\nfunction wrap(v) { return v - B * Math.round(v / B); }\n\n<span class='c'>// profondità di campo: tre strati, solo il vicino sfocato</span>\nctx.filter = 'blur(7px)';   ctx.drawImage(vicino, 0, 0, w, h);",
+  title: "Immersione — nodi, archi e triangoli attorno alla camera",
+  body: "I nodi vivono in un cubo che si ripete all'infinito. Archi fra quelli più vicini della soglia, triangoli fra le triple mutuamente collegate. L'estensione del campo decide quante copie del cubo restano accese: portala al minimo e resta una nuvola sola, portala al massimo e non ne esci mai. Poiché è una dissolvenza e non un interruttore, puoi muoverla mentre voli.",
+  code: "<span class='c'>// la profondità decide posizione, dimensione e opacità</span>\nvar s = focal / z;              <span class='c'>// &lt;- il 3D è tutto qui</span>\n\n<span class='c'>// estensione: spegne le copie del cubo oltre il raggio R</span>\nvar env = clamp((R + soft - dist(mondo)) / soft);",
   create: function (rnd, w, h, density, P) {
-    var B = 2.6;                                   // lato della cella che si ripete
-    var N = Math.round(470 * density);
-    var NB = 6;                                    // livelli di opacità per il raggruppamento
+    var B = 2.6, N = Math.round(470 * density), NB = 6;
+    var C = makeCam3D(), D = makeDof();
     var pts = [], i;
     for (i = 0; i < N; i++) pts.push({
       x: (rnd() - .5) * B, y: (rnd() - .5) * B, z: (rnd() - .5) * B,
       vx: (rnd() - .5) * .0016, vy: (rnd() - .5) * .0016, vz: (rnd() - .5) * .0016
     });
-
-    var cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
-    var focal = 1.0, autoDrift = 0.30;
-    /* Due modi di guardare. DENTRO: campo infinito che si avvolge attorno alla
-       camera, deriva lenta in avanti. FUORI: campo finito, la camera si porta a
-       distanza da sola e orbita attorno alla nuvola. */
-    var mode = "inside";
-    var orbA = 0, orbR = 5.5, orbRT = 5.5, orbH = 0.6, yawOff = 0, pitchOff = 0;
-    var rel = new Float32Array(N * 3);             // posizioni relative alla camera
-    var edges = 0, tris = 0, infinite = true;
-
-    /* Ritmo di comparsa e scomparsa: la misura che conta, letta invece che imposta.
-       Confrontando l'insieme degli archi con quello del frame precedente si ottiene
-       quanti ne nascono e quanti se ne spengono ogni secondo. */
+    var rel = new Float32Array(N * 3), env = new Float32Array(N), tmp = new Float64Array(7);
+    var edges = 0, tris = 0;
     var prevEdges = new Set(), bornAcc = 0, diedAcc = 0, tRate = 0, rateB = 0, rateD = 0;
-
-    /* Campo infinito: le posizioni si avvolgono attorno alla camera, che non ne esce
-       mai. Campo finito: nessun avvolgimento, quindi allontanandosi si esce e si torna
-       a guardare la nuvola da fuori. */
-    function wrap(v) { return infinite ? v - B * Math.round(v / B) : v; }
-
-    /* Tre strati per la profondità di campo.
-       Gli strati sfocati sono renderizzati a metà risoluzione: la sfocatura
-       nasconde la perdita di dettaglio e dimezza i pixel da riempire. */
-    var LSCALE = [0.5, 1, 0.5];        // 0 = vicino, 1 = a fuoco, 2 = lontano
-    var BLUR = [7, 0, 1.4];            // raggio di sfocatura in pixel logici
-    var layers = null, lw = 0, lh = 0, ldpr = 0;
-    function ensureLayers(w, h, dpr) {
-      if (layers && lw === w && lh === h && ldpr === dpr) return;
-      lw = w; lh = h; ldpr = dpr; layers = [];
-      for (var n = 0; n < 3; n++) {
-        var cw = Math.max(1, Math.round(w * dpr * LSCALE[n]));
-        var ch = Math.max(1, Math.round(h * dpr * LSCALE[n]));
-        var c = document.createElement("canvas");
-        c.width = cw; c.height = ch;
-        var lay = { cv: c, ctx: c.getContext("2d"), scale: LSCALE[n], tmp: null, tctx: null };
-        if (BLUR[n] > 0) {
-          var t = document.createElement("canvas");
-          t.width = cw; t.height = ch;
-          lay.tmp = t; lay.tctx = t.getContext("2d");
-        }
-        layers.push(lay);
-      }
-    }
-
-    /* Sfocare lo strato nella SUA risoluzione ridotta costa un quarto dei pixel
-       rispetto a sfocarlo dopo l'ingrandimento, e il risultato è lo stesso. */
-    function blurred(lay, dpr) {
-      if (!lay.tmp) return lay.cv;
-      var r = BLUR[layers.indexOf(lay)] * dpr * lay.scale;
-      lay.tctx.setTransform(1, 0, 0, 1, 0, 0);
-      lay.tctx.clearRect(0, 0, lay.tmp.width, lay.tmp.height);
-      if ("filter" in lay.tctx) lay.tctx.filter = "blur(" + r.toFixed(2) + "px)";
-      lay.tctx.drawImage(lay.cv, 0, 0);
-      if ("filter" in lay.tctx) lay.tctx.filter = "none";
-      return lay.tmp;
-    }
-    /* Soglie fra gli strati: 0 = vicino (sfocato), 1 = a fuoco, 2 = lontano.
-       Nel campo finito si allargano man mano che ti allontani, altrimenti da fuori
-       la nuvola finirebbe tutta nello strato lontano. */
-    var b0 = 0.62, b1 = 1.55;
-    function bin(z) { return z < b0 ? 0 : (z < b1 ? 1 : 2); }
 
     return {
       count: N,
-      getCam: function () { return cam; },
-      setCam: function (c) {
-        if (mode === "outside") {
-          var d = Math.sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
-          orbR = orbRT = d < 1.6 ? 5.5 : Math.min(40, d);
-          orbA = (c.x === 0 && c.z === 0) ? orbA : Math.atan2(c.x, c.z);
-          orbH = c.y; yawOff = 0; pitchOff = 0;
-          return;
-        }
-        cam.x = c.x; cam.y = c.y; cam.z = c.z; cam.yaw = c.yaw; cam.pitch = c.pitch;
-      },
+      getCam: function () { return C.get(); },
+      setCam: function (c) { C.set(c); },
       step: function (dt, w, h, input) {
-        var want = (P && P.mode) ? P.mode : "inside";
-        if (want !== mode) {
-          mode = want;
-          if (mode === "outside") {
-            /* si parte da dove sei e ci si allontana fino a inquadrare la nuvola */
-            var d0 = Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z);
-            orbA = (cam.x === 0 && cam.z === 0) ? 0 : Math.atan2(cam.x, cam.z);
-            orbR = Math.max(0.6, d0); orbRT = 5.5; orbH = 0.6;
-            yawOff = 0; pitchOff = 0;
-          } else {
-            cam.x = 0; cam.y = 0; cam.z = 0; cam.yaw = 0; cam.pitch = 0;
-          }
-        }
-        infinite = (mode === "inside");
-        var mf = input ? input.moveF : 0, mr = input ? input.moveR : 0, mu = input ? input.moveU : 0;
-        var fast = input && input.boost ? 5 : 1;
-
-        if (mode === "outside") {
-          /* La camera sta su un'orbita attorno all'origine e guarda la nuvola.
-             W/S avvicinano e allontanano, R/F alzano e abbassano, A/D ruotano.
-             L'orbita avanza comunque da sola, così la scena non è mai ferma. */
-          if (input) {
-            yawOff += input.lookX * 0.0040;
-            pitchOff = Math.max(-1.0, Math.min(1.0, pitchOff + input.lookY * 0.0040));
-            if (input.fov) focal = input.fov;
-          }
-          var st = 0.055 * dt * fast;
-          orbRT = Math.max(1.8, Math.min(40, orbRT - mf * st));
-          orbH += mu * st * 0.5;
-          orbA += mr * st * 0.10 + dt * 0.0016;
-          orbR += (orbRT - orbR) * 0.045 * dt;      /* avvicinamento morbido */
-          cam.x = Math.sin(orbA) * orbR; cam.y = orbH; cam.z = Math.cos(orbA) * orbR;
-          var L = Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z) || 1;
-          cam.yaw = Math.atan2(-cam.x / L, -cam.z / L) + yawOff;
-          cam.pitch = Math.asin(Math.max(-1, Math.min(1, -cam.y / L))) + pitchOff;
-        } else {
-          if (input) {
-            cam.yaw += input.lookX * 0.0040;
-            cam.pitch += input.lookY * 0.0040;
-            cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch));
-            if (input.fov) focal = input.fov;
-          }
-          var cy0 = Math.cos(cam.yaw), sy0 = Math.sin(cam.yaw);
-          var cp0 = Math.cos(cam.pitch), sp0 = Math.sin(cam.pitch);
-          /* assi della camera nel mondo, ricavati invertendo la rotazione di vista */
-          var fwd = [sy0 * cp0, sp0, cy0 * cp0];
-          var rgt = [cy0, 0, -sy0];
-          var up = [-sp0 * sy0, cp0, -sp0 * cy0];
-          if (mf === 0 && mr === 0 && mu === 0) mf = autoDrift;
-          var sc = 0.011 * dt * fast;
-          cam.x += (fwd[0] * mf + rgt[0] * mr + up[0] * mu) * sc;
-          cam.y += (fwd[1] * mf + rgt[1] * mr + up[1] * mu) * sc;
-          cam.z += (fwd[2] * mf + rgt[2] * mr + up[2] * mu) * sc;
-        }
-
-        /* La deriva dei nodi è ciò che governa il ritmo: più i nodi si muovono,
-           più spesso attraversano la soglia, più archi nascono e si spengono. */
-        var nd = (P ? P.drift : 1) * dt;
+        var R = P ? P.extent : EXTENT_INF;
+        C.step(dt, input, P, R);
+        var cam = C.get(), nd = (P ? P.drift : 1) * dt;
         for (var i = 0; i < N; i++) {
           var p = pts[i];
           p.x += p.vx * nd; p.y += p.vy * nd; p.z += p.vz * nd;
-          if (!infinite) {   /* campo finito: i nodi restano nel cubo */
-            if (p.x < -B / 2 || p.x > B / 2) p.vx = -p.vx;
-            if (p.y < -B / 2 || p.y > B / 2) p.vy = -p.vy;
-            if (p.z < -B / 2 || p.z > B / 2) p.vz = -p.vz;
-          }
-          rel[i * 3] = wrap(p.x - cam.x);
-          rel[i * 3 + 1] = wrap(p.y - cam.y);
-          rel[i * 3 + 2] = wrap(p.z - cam.z);
+          if (p.x < -B / 2 || p.x > B / 2) p.vx = -p.vx;
+          if (p.y < -B / 2 || p.y > B / 2) p.vy = -p.vy;
+          if (p.z < -B / 2 || p.z > B / 2) p.vz = -p.vz;
+          pickCopy(p.x, p.y, p.z, cam, B, R, tmp);
+          rel[i * 3] = tmp[0]; rel[i * 3 + 1] = tmp[1]; rel[i * 3 + 2] = tmp[2];
+          env[i] = tmp[3];
         }
       },
       draw: function (ctx, w, h) {
         var dpr = ctx.getTransform ? ctx.getTransform().a : 1;
-        ensureLayers(w, h, dpr);
-        var n, l, bk;
-        for (n = 0; n < 3; n++) {
-          var lc = layers[n].ctx, sc = dpr * layers[n].scale;
-          lc.setTransform(sc, 0, 0, sc, 0, 0);
-          lc.clearRect(0, 0, w, h);
-          lc.globalCompositeOperation = "lighter";
-        }
-        /* Un percorso per ogni coppia (strato, livello di opacità): invece di
-           migliaia di stroke() e fill() se ne fanno poche decine. */
-        var triP = [], edgeP = [], nodeP = [];
-        for (l = 0; l < 3; l++) {
-          triP.push(new Array(NB)); edgeP.push(new Array(NB)); nodeP.push(new Array(NB));
-        }
-        function path(store, l, b) {
-          var p = store[l][b];
-          if (!p) { p = new Path2D(); store[l][b] = p; }
-          return p;
-        }
-        function bucket(a) { var b = (a * NB) | 0; return b < 0 ? 0 : (b >= NB ? NB - 1 : b); }
+        var L = D.begin(w, h, dpr), S = makeBatch(NB);
+        C.prepare();
+        var camR = C.dist(), k = Math.min(w, h * 1.7) * 0.5, n;
+        var far = camR + B * 0.62, span = B * 0.75 + camR * 0.25;
+        D.thresholds(Math.max(0.62, camR * 0.55), Math.max(1.55, camR * 0.98));
 
-        var cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
-        var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
-        var k = Math.min(w, h * 1.7) * 0.5;
-        var proj = new Array(N), fade = new Array(N), vz = new Float32Array(N);
-
-        /* Nel campo finito la nebbia si allontana insieme alla camera, così la nuvola
-           resta visibile anche guardata da fuori. */
-        var camR = infinite ? 0 : Math.sqrt(cam.x * cam.x + cam.y * cam.y + cam.z * cam.z);
-        var fogFar = infinite ? B * 0.62 : Math.max(B * 0.62, camR + B * 0.95);
-        var fogSpan = infinite ? B * 0.42 : Math.max(B * 0.42, fogFar * 0.60);
-        b0 = infinite ? 0.62 : Math.max(0.62, camR * 0.55);
-        b1 = infinite ? 1.55 : Math.max(1.55, camR * 0.98);
-
+        var proj = new Array(N), fade = new Float32Array(N), vz = new Float32Array(N);
         for (n = 0; n < N; n++) {
-          var dx = rel[n * 3], dy = rel[n * 3 + 1], dz = rel[n * 3 + 2];
-          var x1 = dx * cy - dz * sy, z1 = dx * sy + dz * cy;
-          var y2 = dy * cp - z1 * sp, z2 = dy * sp + z1 * cp;
-          if (z2 < 0.09) { proj[n] = null; fade[n] = 0; continue; }
-          var s = focal / z2;
-          proj[n] = { sx: w * 0.5 + x1 * s * k, sy: h * 0.5 + y2 * s * k };
-          vz[n] = z2;
-          /* dissolvenza: i lontani svaniscono, i vicinissimi anche (escono dal fuoco) */
-          fade[n] = Math.max(0, Math.min(1, (fogFar - z2) / fogSpan));
+          if (env[n] <= 0.01) { proj[n] = null; continue; }
+          var q = C.project(rel[n * 3], rel[n * 3 + 1], rel[n * 3 + 2], w, h, k);
+          proj[n] = q;
+          if (!q) continue;
+          vz[n] = q.z;
+          fade[n] = Math.max(0, Math.min(1, (far - q.z) / span)) * env[n];
         }
 
-        /* Vicini per prossimità, tramite hash spaziale sulle posizioni avvolte.
-           Chiave intera invece che stringa: le collisioni sono innocue perché
-           la distanza viene comunque verificata. */
         var LINK = P ? P.link : 0.57, LINK2 = LINK * LINK;
         var MAXTRI = P ? P.maxTri : 1100;
-        var cells = new Map();
-        var HX = 73856093, HY = 19349663, HZ = 83492791;
+        var cells = new Map(), HX = 73856093, HY = 19349663, HZ = 83492791;
         var gi = new Int32Array(N * 3);
         for (n = 0; n < N; n++) {
           var gx = Math.floor(rel[n * 3] / LINK), gy = Math.floor(rel[n * 3 + 1] / LINK), gz = Math.floor(rel[n * 3 + 2] / LINK);
           gi[n * 3] = gx; gi[n * 3 + 1] = gy; gi[n * 3 + 2] = gz;
           var key = (Math.imul(gx, HX) ^ Math.imul(gy, HY) ^ Math.imul(gz, HZ)) >>> 0;
-          var b = cells.get(key); if (!b) { b = []; cells.set(key, b); } b.push(n);
+          var bkt = cells.get(key); if (!bkt) { bkt = []; cells.set(key, bkt); } bkt.push(n);
         }
         var adj = new Array(N), edgeSet = new Set();
         for (n = 0; n < N; n++) adj[n] = [];
@@ -724,8 +767,7 @@ SKETCHES.inside = {
           if (!proj[n]) continue;
           for (var ox = -1; ox <= 1; ox++) for (var oy = -1; oy <= 1; oy++) for (var oz = -1; oz <= 1; oz++) {
             var ck = (Math.imul(gi[n * 3] + ox, HX) ^ Math.imul(gi[n * 3 + 1] + oy, HY) ^ Math.imul(gi[n * 3 + 2] + oz, HZ)) >>> 0;
-            var cell = cells.get(ck);
-            if (!cell) continue;
+            var cell = cells.get(ck); if (!cell) continue;
             for (var ci = 0; ci < cell.length; ci++) {
               var m = cell[ci];
               if (m <= n || !proj[m]) continue;
@@ -733,83 +775,54 @@ SKETCHES.inside = {
               var d2 = ax * ax + ay * ay + az * az;
               if (d2 >= LINK2 || edgeSet.has(n * N + m)) continue;
               adj[n].push(m); adj[m].push(n); edgeSet.add(n * N + m); edges++;
-
-              /* l'arco: proiettati i due estremi, la retta fra loro è l'arco */
               var al = (1 - Math.sqrt(d2) / LINK) * (fade[n] + fade[m]) * 0.5;
               if (al <= 0.012) continue;
-              bk = bucket(al);
-              var pe = path(edgeP, bin((vz[n] + vz[m]) / 2), bk);
+              var pe = S.path(S.edge, D.binOf((vz[n] + vz[m]) / 2), S.bucket(al));
               pe.moveTo(proj[n].sx, proj[n].sy); pe.lineTo(proj[m].sx, proj[m].sy);
             }
           }
         }
 
-        /* Ritmo: confronto con l'insieme degli archi del frame precedente.
-           Gli indici dei nodi sono stabili, quindi le chiavi sono confrontabili. */
         var born = 0, died = 0;
         edgeSet.forEach(function (kk) { if (!prevEdges.has(kk)) born++; });
         prevEdges.forEach(function (kk) { if (!edgeSet.has(kk)) died++; });
-        prevEdges = edgeSet;
-        bornAcc += born; diedAcc += died;
+        prevEdges = edgeSet; bornAcc += born; diedAcc += died;
         var now = (typeof performance !== "undefined" ? performance.now() : Date.now());
         if (!tRate) tRate = now;
         else if (now - tRate > 600) {
           var secs = (now - tRate) / 1000;
-          rateB = bornAcc / secs; rateD = diedAcc / secs;
-          bornAcc = 0; diedAcc = 0; tRate = now;
+          rateB = bornAcc / secs; rateD = diedAcc / secs; bornAcc = 0; diedAcc = 0; tRate = now;
         }
 
-        /* triangoli: triple mutuamente adiacenti */
         tris = 0;
         for (var c = 0; c < N && tris < MAXTRI; c++) {
           var nb = adj[c];
           for (var mm = 0; mm < nb.length && tris < MAXTRI; mm++) {
             var j = nb[mm]; if (j < c) continue;
             for (var nn = mm + 1; nn < nb.length && tris < MAXTRI; nn++) {
-              var kk = nb[nn]; if (kk < j) continue;
-              if (!edgeSet.has(j * N + kk)) continue;
-              var A = proj[c], Bp = proj[j], C = proj[kk];
-              if (!A || !Bp || !C) continue;
-              var f = (fade[c] + fade[j] + fade[kk]) / 3;
+              var kk2 = nb[nn]; if (kk2 < j || !edgeSet.has(j * N + kk2)) continue;
+              var A = proj[c], Bp = proj[j], Cp = proj[kk2];
+              if (!A || !Bp || !Cp) continue;
+              var f = (fade[c] + fade[j] + fade[kk2]) / 3;
               if (f <= 0.03) continue;
-              var pt = path(triP, bin((vz[c] + vz[j] + vz[kk]) / 3), bucket(f));
-              pt.moveTo(A.sx, A.sy); pt.lineTo(Bp.sx, Bp.sy); pt.lineTo(C.sx, C.sy); pt.closePath();
+              var pt = S.path(S.tri, D.binOf((vz[c] + vz[j] + vz[kk2]) / 3), S.bucket(f));
+              pt.moveTo(A.sx, A.sy); pt.lineTo(Bp.sx, Bp.sy); pt.lineTo(Cp.sx, Cp.sy); pt.closePath();
               tris++;
             }
           }
         }
 
-        /* nodi */
         for (var v = 0; v < N; v++) {
           if (!proj[v] || fade[v] <= 0.02) continue;
           var r = 0.7 + fade[v] * 2.2;
-          var pn = path(nodeP, bin(vz[v]), bucket(fade[v]));
+          var pn = S.path(S.node, D.binOf(vz[v]), S.bucket(fade[v]));
           pn.moveTo(proj[v].sx + r, proj[v].sy);
           pn.arc(proj[v].sx, proj[v].sy, r, 0, 6.2832);
         }
 
-        /* un solo disegno per ogni coppia (strato, livello di opacità) */
-        for (l = 0; l < 3; l++) {
-          var lx = layers[l].ctx;
-          for (bk = 0; bk < NB; bk++) {
-            var a = (bk + 0.5) / NB;
-            if (triP[l][bk]) { lx.fillStyle = "rgba(255,255,255," + (0.075 * a).toFixed(4) + ")"; lx.fill(triP[l][bk]); }
-            if (edgeP[l][bk]) {
-              lx.strokeStyle = "rgba(234,234,234," + (a * 0.62).toFixed(4) + ")";
-              lx.lineWidth = 0.5 + a * 0.8;
-              lx.stroke(edgeP[l][bk]);
-            }
-            if (nodeP[l][bk]) { lx.fillStyle = "rgba(255,255,255," + (0.26 + a * 0.62).toFixed(3) + ")"; lx.fill(nodeP[l][bk]); }
-          }
-        }
+        S.flush(L, 0.075, 0.62, [0.26, 0.62]);
+        D.end(ctx, w, h, dpr);
 
-        /* composizione: lontano -> a fuoco -> vicino, con sfocatura sugli estremi.
-           È qui, e solo qui, che i piani sovrapposti sono la scelta giusta. */
-        ctx.drawImage(blurred(layers[2], dpr), 0, 0, w, h);
-        ctx.drawImage(layers[1].cv, 0, 0, w, h);
-        ctx.drawImage(blurred(layers[0], dpr), 0, 0, w, h);
-
-        /* sorgente luminosa in alto, come nel riferimento */
         var g = ctx.createRadialGradient(w * .52, -h * .16, 0, w * .52, -h * .16, h * 1.05);
         g.addColorStop(0, "rgba(255,255,255,0.18)");
         g.addColorStop(.45, "rgba(255,255,255,0.04)");
@@ -825,21 +838,196 @@ SKETCHES.inside = {
   }
 };
 
-/* --- 5. Reticolo (3D) --- */
+/* --- 4. Flow field 3D --- */
+SKETCHES.flow3d = {
+  label: "Flow field 3D", dim: "3D", hasCam: true, hasDrift: true,
+  blurb: "Lo stesso campo di direzioni, ma nello spazio, attraversato dalla camera.",
+  clear: "full",
+  title: "Flow field 3D — le scie diventano volume",
+  body: "Stesso principio della versione 2D: ogni particella legge una direzione dal rumore e ci si muove. Ma il rumore è a tre dimensioni e la direzione è un vettore nello spazio. Le scie non si possono più accumulare sul canvas, perché la camera si muove e le tracce vecchie sarebbero nel posto sbagliato: ogni particella disegna invece il segmento fra dove era e dove è ora, che resta corretto da qualsiasi punto di vista.",
+  code: "<span class='c'>// due letture del rumore danno due angoli, cioè una direzione 3D</span>\nvar a = noise3(x*F, y*F, z*F) * TAU * 2;\nvar b = (noise3(x*F+9, y*F-4, z*F+2) - 0.5) * Math.PI;\nvx = Math.cos(a) * Math.cos(b);\nvy = Math.sin(b);\nvz = Math.sin(a) * Math.cos(b);",
+  create: function (rnd, w, h, density, P) {
+    var B = 3.0, N = Math.round(1300 * density), NB = 6, F = 3.2;
+    var TR = 9;                        /* lunghezza della scia, in frame */
+    var C = makeCam3D(), D = makeDof(), noise3 = makeNoise3(rnd);
+    /* Storico in coordinate del mondo: la scia va ricostruita rispetto alla
+       camera a ogni frame, altrimenti muovendosi resterebbe dov'era. */
+    var H = new Float32Array(N * TR * 3), G = new Float32Array(N), hp = 0, tmp = new Float64Array(7);
+    var ps = [], i, s;
+    for (i = 0; i < N; i++) {
+      var x = (rnd() - .5) * B, y = (rnd() - .5) * B, z = (rnd() - .5) * B;
+      ps.push({ x: x, y: y, z: z });
+      G[i] = 0.45 + rnd() * 0.55;
+      for (s = 0; s < TR; s++) {
+        H[(i * TR + s) * 3] = x; H[(i * TR + s) * 3 + 1] = y; H[(i * TR + s) * 3 + 2] = z;
+      }
+    }
+    function reseed(i, p) {
+      p.x = (rnd() - .5) * B; p.y = (rnd() - .5) * B; p.z = (rnd() - .5) * B;
+      for (var s = 0; s < TR; s++) {
+        H[(i * TR + s) * 3] = p.x; H[(i * TR + s) * 3 + 1] = p.y; H[(i * TR + s) * 3 + 2] = p.z;
+      }
+    }
+
+    return {
+      count: N,
+      getCam: function () { return C.get(); },
+      setCam: function (c) { C.set(c); },
+      step: function (dt, w, h, input) {
+        C.step(dt, input, P, P ? P.extent : EXTENT_INF);
+        var sp = 0.020 * (P ? P.drift : 1) * dt, age = 0;
+        hp = (hp + 1) % TR;
+        for (var i = 0; i < N; i++) {
+          var p = ps[i];
+          /* due letture del rumore danno due angoli, cioè una direzione 3D */
+          var a = noise3(p.x * F, p.y * F, p.z * F) * 6.2832 * 2;
+          var b = (noise3(p.x * F + 9, p.y * F - 4, p.z * F + 2) - 0.5) * Math.PI;
+          var cb = Math.cos(b);
+          p.x += Math.cos(a) * cb * sp; p.y += Math.sin(b) * sp; p.z += Math.sin(a) * cb * sp;
+          if (p.x < -B / 2 || p.x > B / 2 || p.y < -B / 2 || p.y > B / 2 || p.z < -B / 2 || p.z > B / 2) reseed(i, p);
+          else {
+            H[(i * TR + hp) * 3] = p.x; H[(i * TR + hp) * 3 + 1] = p.y; H[(i * TR + hp) * 3 + 2] = p.z;
+          }
+        }
+      },
+      draw: function (ctx, w, h) {
+        var dpr = ctx.getTransform ? ctx.getTransform().a : 1;
+        var L = D.begin(w, h, dpr), S = makeBatch(NB);
+        C.prepare();
+        var cam = C.get(), R = P ? P.extent : EXTENT_INF;
+        var camR = C.dist(), k = Math.min(w, h * 1.7) * 0.5;
+        var far = camR + B * 0.62, span = B * 0.75 + camR * 0.25;
+        D.thresholds(Math.max(0.62, camR * 0.55), Math.max(1.55, camR * 0.98));
+
+        for (var n = 0; n < N; n++) {
+          var p = ps[n];
+          /* un solo scarto per tutta la scia, così non si spezza a meta */
+          pickCopy(p.x, p.y, p.z, cam, B, R, tmp);
+          var ox = tmp[4], oy = tmp[5], oz = tmp[6], env = tmp[3];
+          if (env <= 0.01) continue;
+          var q = C.project(tmp[0], tmp[1], tmp[2], w, h, k);
+          if (!q) continue;
+          var f = Math.max(0, Math.min(1, (far - q.z) / span)) * env * G[n];
+          if (f <= 0.02) continue;
+          var bin = D.binOf(q.z), bk = S.bucket(f);
+          var pe = S.path(S.edge, bin, bk), started = false;
+          for (var s = 0; s < TR; s++) {
+            var idx = ((hp - s) % TR + TR) % TR;
+            var t = C.project(H[(n * TR + idx) * 3] - cam.x - ox,
+                              H[(n * TR + idx) * 3 + 1] - cam.y - oy,
+                              H[(n * TR + idx) * 3 + 2] - cam.z - oz, w, h, k);
+            if (!t) break;
+            if (!started) { pe.moveTo(t.sx, t.sy); started = true; } else pe.lineTo(t.sx, t.sy);
+          }
+          var r = 0.5 + f * 1.7;
+          var pn = S.path(S.node, bin, bk);
+          pn.moveTo(q.sx + r, q.sy); pn.arc(q.sx, q.sy, r, 0, 6.2832);
+        }
+        S.flush(L, 0, 0.52, [0.10, 0.62]);
+        D.end(ctx, w, h, dpr);
+      },
+      stats: function () { return "particelle " + N + " · scia " + TR + " frame"; }
+    };
+  }
+};
+
+/* --- 5. Suddivisione 3D --- */
+SKETCHES.split3d = {
+  label: "Suddivisione 3D", dim: "3D", hasCam: true, hasSplit: true,
+  blurb: "Un cubo tagliato ricorsivamente in scatole, attraversate dalla camera.",
+  clear: "full",
+  title: "Suddivisione 3D — la stessa ricorsione, con un asse in più",
+  body: "Identica alla versione 2D, salvo che si taglia un cubo invece di un rettangolo e gli assi possibili sono tre invece di due. Ogni scatola viene disegnata come i suoi dodici spigoli, proiettati. Da dentro sembra un'architettura infinita; da fuori si vede che è un solo cubo suddiviso.",
+  code: "<span class='c'>// stessa ricorsione della 2D, con un asse in più</span>\nvar ax = piuLungo(scatola);            <span class='c'>// 0 = x, 1 = y, 2 = z</span>\nvar t  = 0.3 + rnd() * 0.4;\nsplit(parteBassa, d - 1);\nsplit(parteAlta,  d - 1);",
+  create: function (rnd, w, h, density, P) {
+    var B = 2.8, NB = 6;
+    var C = makeCam3D(), D = makeDof();
+    var depth = Math.max(3, Math.round((P ? P.splitDepth : 9) * Math.sqrt(density)));
+    var boxes = [];
+    (function rec(lo, hi, d) {
+      var sx = hi[0] - lo[0], sy = hi[1] - lo[1], sz = hi[2] - lo[2];
+      var smallest = Math.min(sx, sy, sz);
+      if (d === 0 || smallest < B * 0.10 || boxes.length > 900) {
+        boxes.push({ lo: lo, hi: hi, g: 0.35 + rnd() * 0.65 }); return;
+      }
+      var ax = sx >= sy && sx >= sz ? 0 : (sy >= sz ? 1 : 2);
+      /* nel modo diagonale l'asse è scelto a caso: le scatole si sfalsano */
+      if (P && (P.splitMode === "diag" || (P.splitMode === "misto" && rnd() < 0.5))) ax = (rnd() * 3) | 0;
+      var t = 0.30 + rnd() * 0.40;
+      var cut = lo[ax] + (hi[ax] - lo[ax]) * t;
+      var m1 = hi.slice(), m2 = lo.slice();
+      m1[ax] = cut; m2[ax] = cut;
+      rec(lo, m1, d - 1); rec(m2, hi, d - 1);
+    })([-B / 2, -B / 2, -B / 2], [B / 2, B / 2, B / 2], depth);
+
+    var EDGES = [[0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+    var shown = 0;
+
+    return {
+      count: boxes.length,
+      getCam: function () { return C.get(); },
+      setCam: function (c) { C.set(c); },
+      step: function (dt, w, h, input) {
+        C.step(dt, input, P, P ? P.extent : EXTENT_INF);
+        shown = Math.min(boxes.length, shown + dt * (P ? P.reveal : 1.6) * 2);
+      },
+      draw: function (ctx, w, h) {
+        var dpr = ctx.getTransform ? ctx.getTransform().a : 1;
+        var L = D.begin(w, h, dpr), S = makeBatch(NB);
+        C.prepare();
+        var cam = C.get(), R = P ? P.extent : EXTENT_INF;
+        var camR = C.dist(), k = Math.min(w, h * 1.7) * 0.5;
+        var far = camR + B * 0.75, span = B * 0.85 + camR * 0.25;
+        D.thresholds(Math.max(0.62, camR * 0.55), Math.max(1.55, camR * 0.98));
+
+        var lim = Math.floor(shown), v = new Array(8), tmp = new Float64Array(7), i, e;
+        for (var bi = 0; bi < lim; bi++) {
+          var bx = boxes[bi], lo = bx.lo, hi = bx.hi;
+          var cx = (lo[0] + hi[0]) / 2, cy2 = (lo[1] + hi[1]) / 2, cz = (lo[2] + hi[2]) / 2;
+          pickCopy(cx, cy2, cz, cam, B, R, tmp);
+          var ox = tmp[4], oy = tmp[5], oz = tmp[6], envv = tmp[3];
+          if (envv <= 0.01) continue;
+          for (i = 0; i < 8; i++) {
+            var px = (i & 1 ? hi[0] : lo[0]) - cam.x - ox;
+            var py = (i & 2 ? hi[1] : lo[1]) - cam.y - oy;
+            var pz = (i & 4 ? hi[2] : lo[2]) - cam.z - oz;
+            v[i] = C.project(px, py, pz, w, h, k);
+          }
+          var zc = 0, cnt = 0;
+          for (i = 0; i < 8; i++) if (v[i]) { zc += v[i].z; cnt++; }
+          if (!cnt) continue;
+          zc /= cnt;
+          var f = Math.max(0, Math.min(1, (far - zc) / span)) * envv * bx.g;
+          if (f <= 0.02) continue;
+          var pe = S.path(S.edge, D.binOf(zc), S.bucket(f));
+          for (e = 0; e < 12; e++) {
+            var a = v[EDGES[e][0]], b = v[EDGES[e][1]];
+            if (!a || !b) continue;
+            pe.moveTo(a.sx, a.sy); pe.lineTo(b.sx, b.sy);
+          }
+        }
+        S.flush(L, 0, 0.42, [0, 0]);
+        D.end(ctx, w, h, dpr);
+      },
+      stats: function () { return "scatole " + Math.floor(shown) + " di " + boxes.length; }
+    };
+  }
+};
+
+/* --- 6. Reticolo (3D) --- */
 SKETCHES.lattice = {
-  label: "Reticolo",
-  dim: "3D",
+  label: "Reticolo", dim: "3D",
   blurb: "Griglia cubica di punti che ruota su due assi, con dissolvenza in profondità.",
   clear: "full",
   title: "Reticolo — perché serve davvero la profondità",
   body: "La stessa griglia, ruotata su due assi. Guardala girare: le facce si compenetrano, i punti lontani rimpiccioliscono e sbiadiscono, e la struttura si legge come un solido. Sovrapporre piani 2D fissi non produce mai questo, perché i piani non possono ruotare l'uno rispetto all'altro.",
-  code: "<span class='c'>// rotazione su Y, poi su X, poi proiezione</span>\nvar x1 =  x * cosY + z * sinY;\nvar z1 = -x * sinY + z * cosY;\nvar y2 =  y * cosX - z1 * sinX;\nvar z2 =  y * sinX + z1 * cosX;\nvar p  = project(x1, y2, z2, w, h, 3.2, 1.2);",
+  code: "<span class='c'>// rotazione su Y, poi su X, poi proiezione</span>\nvar x1 =  x * cosY + z * sinY;\nvar z1 = -x * sinY + z * cosY;\nvar y2 =  y * cosX - z1 * sinX;\nvar z2 =  y * sinX + z1 * cosX;",
   create: function (rnd, w, h, density) {
     var G = Math.max(3, Math.round(6 * Math.cbrt(density))), pts = [], idx = {}, i, j, k;
     for (i = 0; i < G; i++) for (j = 0; j < G; j++) for (k = 0; k < G; k++) {
       var t = (G - 1) || 1;
       idx[i + "," + j + "," + k] = pts.length;
-      pts.push({ x: (i / t) * 2 - 1, y: (j / t) * 2 - 1, z: (k / t) * 2 - 1, i: i, j: j, k: k, w: 0.65 + rnd() * 0.35 });
+      pts.push({ x: (i / t) * 2 - 1, y: (j / t) * 2 - 1, z: (k / t) * 2 - 1, w: 0.65 + rnd() * 0.35 });
     }
     var links = [];
     for (i = 0; i < G; i++) for (j = 0; j < G; j++) for (k = 0; k < G; k++) {
@@ -860,18 +1048,20 @@ SKETCHES.lattice = {
           var p = pts[n];
           var x1 = p.x * cy + p.z * sy, z1 = -p.x * sy + p.z * cy;
           var y2 = p.y * cx - z1 * sx, z2 = p.y * sx + z1 * cx;
-          var q = project(x1, y2, z2, w, h, 3.2, 1.2);
-          proj[n] = q;
-          fade[n] = q ? Math.max(0, Math.min(1, (5.0 - q.zc) / 3.0)) : 0;
+          var zc = z2 + 3.2;
+          if (zc < 0.35) { proj[n] = null; fade[n] = 0; continue; }
+          var s = 1.2 / zc, kk = Math.min(w, h * 1.7) * 0.46;
+          proj[n] = { sx: w * 0.5 + x1 * s * kk, sy: h * 0.5 + y2 * s * kk };
+          fade[n] = Math.max(0, Math.min(1, (5.0 - zc) / 3.0));
         }
         for (n = 0; n < links.length; n++) {
-          var A = proj[links[n][0]], B = proj[links[n][1]];
-          if (!A || !B) continue;
+          var A = proj[links[n][0]], Bb = proj[links[n][1]];
+          if (!A || !Bb) continue;
           var f = (fade[links[n][0]] + fade[links[n][1]]) * 0.5;
           if (f <= 0.02) continue;
           ctx.strokeStyle = "rgba(214,226,238," + (f * f * 0.30).toFixed(4) + ")";
           ctx.lineWidth = 0.4 + f * 0.7;
-          ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(B.sx, B.sy); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(Bb.sx, Bb.sy); ctx.stroke();
         }
         ctx.globalCompositeOperation = "lighter";
         for (n = 0; n < pts.length; n++) {
@@ -889,7 +1079,7 @@ SKETCHES.lattice = {
 
 /* ======================= RUNTIME ======================= */
 (function () {
-  var ORDER = ["flow", "split", "plexus", "inside", "lattice"];
+  var ORDER = ["flow", "split", "inside", "flow3d", "split3d", "lattice"];
   var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   var W = 0, H = 0, DPR = 1;
   var current = "inside", inst = null, paused = false, frames = 0;
@@ -916,8 +1106,12 @@ SKETCHES.lattice = {
   /* stato degli input della camera, consumato da step() */
   var input = { lookX: 0, lookY: 0, moveF: 0, moveR: 0, moveU: 0, fov: 1, boost: false };
   /* parametri di generazione, letti dallo sketch a ogni frame senza ricostruirlo */
-  var params = { link: 0.57, drift: 1, maxTri: 1100, mode: "inside" };
+  var params = { link: 0.57, drift: 1, maxTri: 1100, mode: "inside",
+                extent: EXTENT_INF, splitMode: "orto", splitDepth: 9, reveal: 1.6 };
   var genPanel = document.getElementById("gen-panel");
+  var viewPanel = document.getElementById("view-panel");
+  var splitPanel = document.getElementById("split-panel");
+  var driftField = document.getElementById("drift-field");
   var keys = Object.create(null);
   var camPanel = document.getElementById("cam-panel");
   var camEl = document.getElementById("cam");
@@ -933,8 +1127,11 @@ SKETCHES.lattice = {
     document.getElementById("ex-body").textContent = s.body;
     document.getElementById("ex-code").innerHTML = s.code;
     camPanel.hidden = !s.hasCam;
-    genPanel.hidden = !s.hasCam;
+    viewPanel.hidden = !s.hasCam;
     fovField.hidden = !s.hasCam;
+    genPanel.hidden = !s.hasGen;
+    splitPanel.hidden = !s.hasSplit;
+    driftField.hidden = !s.hasDrift;
     cv.style.cursor = s.hasCam ? "grab" : "default";
     build();
   }
@@ -984,6 +1181,33 @@ SKETCHES.lattice = {
   driftEl.addEventListener("input", function () {
     params.drift = driftEl.value / 100; driftVal.textContent = params.drift.toFixed(2) + "×";
   });
+
+  /* Estensione del campo: continua, quindi si può muovere mentre voli. */
+  var extEl = document.getElementById("extent"), extVal = document.getElementById("extent-val");
+  extEl.addEventListener("input", function () {
+    var v = parseInt(extEl.value, 10);
+    params.extent = v >= 100 ? EXTENT_INF : v / 10;
+    extVal.textContent = v >= 100 ? "∞" : (v / 10).toFixed(1);
+  });
+
+  /* Taglio: cambiano la struttura, quindi ricostruiscono lo sketch. */
+  var depthEl = document.getElementById("depth"), depthVal = document.getElementById("depth-val");
+  var revEl = document.getElementById("reveal"), revVal = document.getElementById("reveal-val");
+  depthEl.addEventListener("input", function () { depthVal.textContent = depthEl.value; });
+  depthEl.addEventListener("change", function () { params.splitDepth = parseInt(depthEl.value, 10); build(); });
+  revEl.addEventListener("input", function () {
+    params.reveal = parseInt(revEl.value, 10) / 10;
+    revVal.textContent = params.reveal.toFixed(1) + "/frame";
+  });
+  var cuts = { orto: document.getElementById("cut-orto"), diag: document.getElementById("cut-diag"), misto: document.getElementById("cut-mix") };
+  function setCut(m) {
+    params.splitMode = m;
+    for (var k in cuts) cuts[k].setAttribute("aria-pressed", String(k === m));
+    build();
+  }
+  cuts.orto.addEventListener("click", function () { setCut("orto"); });
+  cuts.diag.addEventListener("click", function () { setCut("diag"); });
+  cuts.misto.addEventListener("click", function () { setCut("misto"); });
   budEl.addEventListener("input", function () {
     params.maxTri = parseInt(budEl.value, 10); budVal.textContent = budEl.value;
   });
@@ -1025,9 +1249,15 @@ SKETCHES.lattice = {
 
   /* --- camera: tastiera per volare --- */
   cv.tabIndex = 0;
+  /* I tasti di movimento devono restare vivi anche dopo aver toccato un cursore:
+     solo i campi di testo se li tengono tutti, e i cursori si tengono le frecce. */
   function keyTarget(e) {
     var t = e.target;
-    return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+    if (!t) return false;
+    if (t.tagName === "TEXTAREA" || t.tagName === "SELECT") return true;
+    if (t.tagName !== "INPUT") return false;
+    if (t.type === "range") return e.code.indexOf("Arrow") === 0;
+    return true;
   }
   var MOVE = { KeyW: "F+", ArrowUp: "F+", KeyS: "F-", ArrowDown: "F-", KeyA: "R-", ArrowLeft: "R-", KeyD: "R+", ArrowRight: "R+", KeyR: "U+", KeyF: "U-" };
   window.addEventListener("keydown", function (e) {
