@@ -96,6 +96,19 @@
   .bar > i { display:block; height:100%; width:0; background:var(--signal); transition:width .25s linear; }
   #rec-prog { display:flex; flex-direction:column; }
   .warn { color:var(--none); }
+  .swatches { display:grid; grid-template-columns:repeat(auto-fit,minmax(64px,1fr)); gap:.4rem; }
+  .sw {
+    appearance:none; border:1px solid var(--line-strong); border-radius:2px; padding:0;
+    cursor:pointer; overflow:hidden; display:flex; flex-direction:column; background:transparent;
+  }
+  .sw i { display:block; height:22px; }
+  .sw span {
+    font-family:var(--f-mono); font-size:8.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--text-mute); padding:.22rem .1rem; background:var(--ground);
+  }
+  .sw:hover { border-color:var(--signal); }
+  .sw[aria-pressed="true"] { border-color:var(--signal); box-shadow:inset 0 0 0 1px var(--signal); }
+  .sw[aria-pressed="true"] span { color:var(--signal); }
   .hint { margin:0; font-size:.78rem; line-height:1.5; color:var(--text-mute); }
   .hint b { font-family:var(--f-mono); font-size:.9em; font-weight:400; color:var(--text-soft); }
   #cv { touch-action:none; cursor:grab; }
@@ -150,6 +163,13 @@
       <div class="panel">
         <div class="phead"><p class="eyebrow">Sketch</p></div>
         <div class="picker" id="picker"></div>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><p class="eyebrow">Palette</p></div>
+        <div class="pbody">
+          <div class="swatches" id="swatches"></div>
+        </div>
       </div>
 
       <div class="panel">
@@ -237,6 +257,15 @@
             <label for="reveal">Velocità comparsa <span class="val" id="reveal-val">1.6/frame</span></label>
             <input type="range" id="reveal" min="1" max="120" value="16" step="1">
           </div>
+          <div class="field">
+            <label>Smontaggio</label>
+            <div class="row">
+              <button class="act" id="un-rev" aria-pressed="true" style="flex:1">A ritroso</button>
+              <button class="act" id="un-rnd" aria-pressed="false" style="flex:1">Casuale</button>
+              <button class="act" id="un-no" aria-pressed="false" style="flex:1">Mai</button>
+            </div>
+          </div>
+          <p class="hint">Quando la figura è completa resta ferma un momento, poi si smonta: <b>a ritroso</b> ripercorre all'indietro l'ordine di costruzione, l'ultima nata muore per prima. Poi ricomincia.</p>
         </div>
       </div>
 
@@ -374,6 +403,38 @@ function makeNoise3(rnd) {
     var c11 = at(x0, y1, z1) * (1 - fx) + at(x1, y1, z1) * fx;
     return (c00 * (1 - fy) + c10 * fy) * (1 - fz) + (c01 * (1 - fy) + c11 * fy) * fz;
   };
+}
+
+/* Palette. Il colore non viene appiccicato sopra: viene mappato sulla stessa
+   grandezza che struttura già l'immagine, cioè la profondità. Ogni livello di
+   opacità pesca un colore lungo la rampa, quindi il vicino e il lontano restano
+   distinguibili come nel monocromo — cambia solo la tinta. */
+var PALETTES = {
+  mono:     { label: "Monocromo", bg: [9, 9, 9],    stops: [[104, 104, 104], [198, 201, 206], [255, 255, 255]] },
+  brace:    { label: "Brace",     bg: [14, 9, 7],   stops: [[116, 50, 26], [214, 126, 48], [255, 227, 170]] },
+  ghiaccio: { label: "Ghiaccio",  bg: [7, 10, 14],  stops: [[44, 84, 122], [104, 175, 214], [228, 246, 255]] },
+  alga:     { label: "Alga",      bg: [7, 13, 11],  stops: [[32, 90, 78], [86, 178, 140], [216, 248, 228]] },
+  sabbia:   { label: "Sabbia",    bg: [13, 11, 8],  stops: [[108, 86, 56], [190, 162, 112], [249, 239, 216]] }
+};
+var PAL = PALETTES.mono;
+function palAt(t) {
+  var st = PAL.stops, n = st.length - 1;
+  var x = Math.max(0, Math.min(0.9999, t)) * n, i = x | 0, f = x - i;
+  var a = st[i], b = st[i + 1];
+  return ((a[0] + (b[0] - a[0]) * f) | 0) + "," + ((a[1] + (b[1] - a[1]) * f) | 0) + "," + ((a[2] + (b[2] - a[2]) * f) | 0);
+}
+function palBg() { return "rgb(" + PAL.bg.join(",") + ")"; }
+
+/* Sorgente luminosa in alto: è ciò che dà alla scena un "sopra" e un "sotto",
+   e quindi la sensazione di starci dentro invece di guardarla. */
+function keyLight(ctx, w, h) {
+  var g = ctx.createRadialGradient(w * .52, -h * .16, 0, w * .52, -h * .16, h * 1.05);
+  g.addColorStop(0, "rgba(255,255,255,0.18)");
+  g.addColorStop(.45, "rgba(255,255,255,0.04)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "source-over";
 }
 
 /* Estensione del campo, l'unica cosa che separa "finito" da "infinito".
@@ -566,16 +627,58 @@ function makeBatch(nb) {
       var x = L[l].ctx;
       for (var b = 0; b < nb; b++) {
         var a = (b + 0.5) / nb;
-        if (s.tri[l][b]) { x.fillStyle = "rgba(255,255,255," + (triA * a).toFixed(4) + ")"; x.fill(s.tri[l][b]); }
+        var col = palAt(a);
+        if (s.tri[l][b]) { x.fillStyle = "rgba(" + col + "," + (triA * a).toFixed(4) + ")"; x.fill(s.tri[l][b]); }
         if (s.edge[l][b]) {
-          x.strokeStyle = "rgba(234,234,234," + (edgeA * a).toFixed(4) + ")";
+          x.strokeStyle = "rgba(" + col + "," + (edgeA * a).toFixed(4) + ")";
           x.lineWidth = 0.5 + a * 0.8; x.stroke(s.edge[l][b]);
         }
-        if (s.node[l][b]) { x.fillStyle = "rgba(255,255,255," + (nodeA[0] + a * nodeA[1]).toFixed(3) + ")"; x.fill(s.node[l][b]); }
+        if (s.node[l][b]) { x.fillStyle = "rgba(" + col + "," + (nodeA[0] + a * nodeA[1]).toFixed(3) + ")"; x.fill(s.node[l][b]); }
       }
     }
   };
   return s;
+}
+
+/* Ciclo di vita di una struttura che si costruisce e si smonta.
+   Costruisce nell'ordine in cui le parti sono nate, tiene la figura completa
+   per un momento, poi la smonta: o a ritroso lungo lo stesso percorso — l'ultima
+   nata muore per prima — oppure in ordine casuale. Finito, ricomincia. */
+function makeCycle(n, rnd) {
+  var alive = new Uint8Array(n);
+  var order = new Int32Array(n), kill = new Int32Array(n), i;
+  for (i = 0; i < n; i++) order[i] = i;
+  var phase = 0, built = 0, razed = 0, held = 0, live = 0;
+  function planKill(mode) {
+    for (var i = 0; i < n; i++) kill[i] = order[n - 1 - i];      /* a ritroso */
+    if (mode === "casuale") {
+      for (var j = n - 1; j > 0; j--) {
+        var t = (rnd() * (j + 1)) | 0, tmp = kill[j]; kill[j] = kill[t]; kill[t] = tmp;
+      }
+    }
+  }
+  return {
+    alive: alive,
+    count: function () { return live; },
+    phaseName: function () { return phase === 0 ? "costruisce" : (phase === 1 ? "completa" : "smonta"); },
+    step: function (dt, P) {
+      var sp = dt * (P ? P.reveal : 1.6), mode = (P && P.undo) ? P.undo : "inverso", i;
+      if (phase === 0) {
+        var t = Math.min(n, built + sp);
+        for (i = Math.floor(built); i < Math.floor(t); i++) { alive[order[i]] = 1; live++; }
+        built = t;
+        if (built >= n) { phase = 1; held = 0; }
+      } else if (phase === 1) {
+        held += dt;
+        if (held > 90 && mode !== "no") { phase = 2; razed = 0; planKill(mode); }
+      } else {
+        var u = Math.min(n, razed + sp);
+        for (i = Math.floor(razed); i < Math.floor(u); i++) { alive[kill[i]] = 0; live--; }
+        razed = u;
+        if (razed >= n) { phase = 0; built = 0; }
+      }
+    }
+  };
 }
 
 /* Taglio di un poligono convesso con una retta. Un'unica funzione copre sia i
@@ -627,7 +730,7 @@ SKETCHES.flow = {
         }
       },
       draw: function (ctx) {
-        ctx.fillStyle = "rgba(233,239,246,0.30)";
+        ctx.fillStyle = "rgba(" + palAt(0.72) + ",0.30)";
         for (var i = 0; i < ps.length; i++) ctx.fillRect(ps[i].x, ps[i].y, 0.9, 0.9);
       }
     };
@@ -671,24 +774,25 @@ SKETCHES.split = {
       rec(parts[0], d - 1); rec(parts[1], d - 1);
     })([[0, 0], [w, 0], [w, h], [0, h]], depth);
 
-    var shown = 0;
+    var cyc = makeCycle(cells.length, rnd);
     return {
       count: cells.length,
-      step: function (dt) { shown = Math.min(cells.length, shown + dt * (P ? P.reveal : 1.6)); },
+      step: function (dt) { cyc.step(dt, P); },
       draw: function (ctx) {
-        var n = Math.floor(shown), i, j;
-        for (i = 0; i < n; i++) {
+        var i, j;
+        for (i = 0; i < cells.length; i++) {
+          if (!cyc.alive[i]) continue;
           var c = cells[i], p = c.p;
           ctx.beginPath(); ctx.moveTo(p[0][0], p[0][1]);
           for (j = 1; j < p.length; j++) ctx.lineTo(p[j][0], p[j][1]);
           ctx.closePath();
-          ctx.fillStyle = "rgba(233,239,246," + (0.04 + c.g * 0.14).toFixed(3) + ")";
+          ctx.fillStyle = "rgba(" + palAt(c.g * 0.75) + "," + (0.05 + c.g * 0.16).toFixed(3) + ")";
           ctx.fill();
-          ctx.strokeStyle = "rgba(233,239,246," + (0.12 + c.g * 0.24).toFixed(3) + ")";
+          ctx.strokeStyle = "rgba(" + palAt(0.35 + c.g * 0.65) + "," + (0.14 + c.g * 0.26).toFixed(3) + ")";
           ctx.lineWidth = 0.7; ctx.stroke();
         }
       },
-      stats: function () { return "celle " + Math.floor(shown) + " di " + cells.length; }
+      stats: function () { return "celle " + cyc.count() + " di " + cells.length + " · " + cyc.phaseName(); }
     };
   }
 };
@@ -823,13 +927,7 @@ SKETCHES.inside = {
         S.flush(L, 0.075, 0.62, [0.26, 0.62]);
         D.end(ctx, w, h, dpr);
 
-        var g = ctx.createRadialGradient(w * .52, -h * .16, 0, w * .52, -h * .16, h * 1.05);
-        g.addColorStop(0, "rgba(255,255,255,0.18)");
-        g.addColorStop(.45, "rgba(255,255,255,0.04)");
-        g.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.globalCompositeOperation = "lighter";
-        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-        ctx.globalCompositeOperation = "source-over";
+        keyLight(ctx, w, h);
       },
       stats: function () {
         return "archi " + edges + " (+" + rateB.toFixed(0) + " −" + rateD.toFixed(0) + "/s) · triangoli " + tris;
@@ -925,6 +1023,7 @@ SKETCHES.flow3d = {
         }
         S.flush(L, 0, 0.52, [0.10, 0.62]);
         D.end(ctx, w, h, dpr);
+        keyLight(ctx, w, h);
       },
       stats: function () { return "particelle " + N + " · scia " + TR + " frame"; }
     };
@@ -961,7 +1060,7 @@ SKETCHES.split3d = {
     })([-B / 2, -B / 2, -B / 2], [B / 2, B / 2, B / 2], depth);
 
     var EDGES = [[0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
-    var shown = 0;
+    var cyc = makeCycle(boxes.length, rnd);
 
     return {
       count: boxes.length,
@@ -969,7 +1068,7 @@ SKETCHES.split3d = {
       setCam: function (c) { C.set(c); },
       step: function (dt, w, h, input) {
         C.step(dt, input, P, P ? P.extent : EXTENT_INF);
-        shown = Math.min(boxes.length, shown + dt * (P ? P.reveal : 1.6) * 2);
+        cyc.step(dt * 2, P);
       },
       draw: function (ctx, w, h) {
         var dpr = ctx.getTransform ? ctx.getTransform().a : 1;
@@ -980,8 +1079,9 @@ SKETCHES.split3d = {
         var far = camR + B * 0.75, span = B * 0.85 + camR * 0.25;
         D.thresholds(Math.max(0.62, camR * 0.55), Math.max(1.55, camR * 0.98));
 
-        var lim = Math.floor(shown), v = new Array(8), tmp = new Float64Array(7), i, e;
-        for (var bi = 0; bi < lim; bi++) {
+        var v = new Array(8), tmp = new Float64Array(7), i, e;
+        for (var bi = 0; bi < boxes.length; bi++) {
+          if (!cyc.alive[bi]) continue;
           var bx = boxes[bi], lo = bx.lo, hi = bx.hi;
           var cx = (lo[0] + hi[0]) / 2, cy2 = (lo[1] + hi[1]) / 2, cz = (lo[2] + hi[2]) / 2;
           pickCopy(cx, cy2, cz, cam, B, R, tmp);
@@ -1008,8 +1108,9 @@ SKETCHES.split3d = {
         }
         S.flush(L, 0, 0.42, [0, 0]);
         D.end(ctx, w, h, dpr);
+        keyLight(ctx, w, h);
       },
-      stats: function () { return "scatole " + Math.floor(shown) + " di " + boxes.length; }
+      stats: function () { return "scatole " + cyc.count() + " di " + boxes.length + " · " + cyc.phaseName(); }
     };
   }
 };
@@ -1059,7 +1160,7 @@ SKETCHES.lattice = {
           if (!A || !Bb) continue;
           var f = (fade[links[n][0]] + fade[links[n][1]]) * 0.5;
           if (f <= 0.02) continue;
-          ctx.strokeStyle = "rgba(214,226,238," + (f * f * 0.30).toFixed(4) + ")";
+          ctx.strokeStyle = "rgba(" + palAt(f) + "," + (f * f * 0.30).toFixed(4) + ")";
           ctx.lineWidth = 0.4 + f * 0.7;
           ctx.beginPath(); ctx.moveTo(A.sx, A.sy); ctx.lineTo(Bb.sx, Bb.sy); ctx.stroke();
         }
@@ -1067,7 +1168,7 @@ SKETCHES.lattice = {
         for (n = 0; n < pts.length; n++) {
           if (!proj[n] || fade[n] <= 0.02) continue;
           ctx.beginPath(); ctx.arc(proj[n].sx, proj[n].sy, 0.6 + fade[n] * 2.1 * pts[n].w, 0, 6.2832);
-          ctx.fillStyle = "rgba(255,255,255," + (fade[n] * fade[n] * 0.75).toFixed(3) + ")";
+          ctx.fillStyle = "rgba(" + palAt(fade[n]) + "," + (fade[n] * fade[n] * 0.75).toFixed(3) + ")";
           ctx.fill();
         }
         ctx.globalCompositeOperation = "source-over";
@@ -1107,7 +1208,7 @@ SKETCHES.lattice = {
   var input = { lookX: 0, lookY: 0, moveF: 0, moveR: 0, moveU: 0, fov: 1, boost: false };
   /* parametri di generazione, letti dallo sketch a ogni frame senza ricostruirlo */
   var params = { link: 0.57, drift: 1, maxTri: 1100, mode: "inside",
-                extent: EXTENT_INF, splitMode: "orto", splitDepth: 9, reveal: 1.6 };
+                extent: EXTENT_INF, splitMode: "orto", splitDepth: 9, reveal: 1.6, undo: "inverso" };
   var genPanel = document.getElementById("gen-panel");
   var viewPanel = document.getElementById("view-panel");
   var splitPanel = document.getElementById("split-panel");
@@ -1156,7 +1257,7 @@ SKETCHES.lattice = {
     if (inst.setCam && keptCam) inst.setCam(keptCam);
     frames = 0;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    ctx.fillStyle = "#090909"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = palBg(); ctx.fillRect(0, 0, W, H);
   }
 
   /* controls */
@@ -1205,6 +1306,40 @@ SKETCHES.lattice = {
     for (var k in cuts) cuts[k].setAttribute("aria-pressed", String(k === m));
     build();
   }
+  var undos = { inverso: document.getElementById("un-rev"), casuale: document.getElementById("un-rnd"), no: document.getElementById("un-no") };
+  function setUndo(m) {
+    params.undo = m;
+    for (var k in undos) undos[k].setAttribute("aria-pressed", String(k === m));
+  }
+  undos.inverso.addEventListener("click", function () { setUndo("inverso"); });
+  undos.casuale.addEventListener("click", function () { setUndo("casuale"); });
+  undos.no.addEventListener("click", function () { setUndo("no"); });
+
+  /* --- palette: cambia a caldo, nessuna ricostruzione --- */
+  var swWrap = document.getElementById("swatches"), screenFig = document.querySelector(".screen");
+  Object.keys(PALETTES).forEach(function (key) {
+    var pl = PALETTES[key];
+    var b = document.createElement("button");
+    b.className = "sw"; b.type = "button"; b.dataset.pal = key;
+    b.setAttribute("aria-pressed", String(PAL === pl));
+    b.title = pl.label;
+    var grad = pl.stops.map(function (c, i) {
+      return "rgb(" + c.join(",") + ") " + Math.round(i / (pl.stops.length - 1) * 100) + "%";
+    }).join(",");
+    b.innerHTML = "<i></i><span></span>";
+    b.querySelector("i").style.background = "linear-gradient(90deg," + grad + ")";
+    b.querySelector("span").textContent = pl.label;
+    b.addEventListener("click", function () {
+      PAL = pl;
+      Array.prototype.forEach.call(swWrap.children, function (o) {
+        o.setAttribute("aria-pressed", String(o.dataset.pal === key));
+      });
+      if (screenFig) screenFig.style.background = palBg();
+    });
+    swWrap.appendChild(b);
+  });
+  if (screenFig) screenFig.style.background = palBg();
+
   cuts.orto.addEventListener("click", function () { setCut("orto"); });
   cuts.diag.addEventListener("click", function () { setCut("diag"); });
   cuts.misto.addEventListener("click", function () { setCut("misto"); });
@@ -1481,15 +1616,16 @@ SKETCHES.lattice = {
 
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       if (SKETCHES[current].clear === "trail") {
-        ctx.fillStyle = "rgba(9,9,9,0.055)"; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "rgba(" + PAL.bg.join(",") + ",0.055)"; ctx.fillRect(0, 0, W, H);
       } else {
-        ctx.fillStyle = "#090909"; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = palBg(); ctx.fillRect(0, 0, W, H);
       }
       inst.draw(ctx, W, H);
 
       if (SKETCHES[current].dim === "3D") {
         var vg = ctx.createRadialGradient(W * .5, H * .45, Math.min(W, H) * .18, W * .5, H * .5, Math.max(W, H) * .78);
-        vg.addColorStop(0, "rgba(9,9,9,0)"); vg.addColorStop(1, "rgba(9,9,9,0.55)");
+        var bgs = PAL.bg.join(",");
+        vg.addColorStop(0, "rgba(" + bgs + ",0)"); vg.addColorStop(1, "rgba(" + bgs + ",0.55)");
         ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
       }
 
